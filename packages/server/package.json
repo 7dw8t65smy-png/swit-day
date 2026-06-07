@@ -1,0 +1,26 @@
+{
+  "name": "@swit/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "npm run build --workspace=@swit/shared && tsx watch src/index.ts",
+    "build": "npm run build --workspace=@swit/shared && tsc",
+    "start": "node dist/index.js",
+    "typecheck": "npm run build --workspace=@swit/shared && tsc --noEmit"
+  },
+  "dependencies": {
+    "@swit/shared": "*",
+    "fastify": "^4.28.1",
+    "@fastify/cors": "^9.0.1",
+    "better-sqlite3": "^11.3.0",
+    "nanoid": "^5.0.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^20.14.10",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  }
+}

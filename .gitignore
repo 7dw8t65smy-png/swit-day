@@ -1,0 +1,16 @@
+node_modules
+dist
+out
+.DS_Store
+*.log
+.env
+.env.local
+data/
+*.db
+*.db-journal
+.vite
+.electron-vite
+
+# Electron build artifacts
+packages/desktop/release/
+packages/desktop/out/

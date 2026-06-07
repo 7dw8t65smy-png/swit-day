@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #F5F6FA;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F0F1F5;
+  --color-border: #E5E7EB;
+  --color-text: #111827;
+  --color-text-muted: #6B7280;
+  --color-text-faint: #9CA3AF;
+  --color-accent: #2563EB;
+  --color-accent-hover: #1D4ED8;
+  --color-accent-light: #EFF6FF;
+  --color-accent-text: #1E40AF;
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+  --color-info: #3B82F6;
+  --color-work: #2563EB;
+  --color-pause: #F59E0B;
+  --color-break: #10B981;
+}
+
+.dark {
+  --color-bg: #0F1117;
+  --color-surface: #1A1D27;
+  --color-surface-2: #22263A;
+  --color-border: #2D3148;
+  --color-text: #F9FAFB;
+  --color-text-muted: #9CA3AF;
+  --color-text-faint: #6B7280;
+  --color-accent-light: #1E293B;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+  font-size: 15px;
+}
+
+.timer-font {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* Reusable input class — single source of truth for form controls.
+   Used heavily on the Settings page; keep it generic. */
+.input {
+  height: 2.5rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-radius: 6px;
+  font-size: 14px;
+  width: 100%;
+  max-width: 100%;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.input:focus { border-color: var(--color-accent); }
+.input:disabled { opacity: 0.5; cursor: not-allowed; }
+select.input { padding: 0 0.5rem; }
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.animate-in.slide-in-from-right {
+  animation: slideInRight 0.18s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fadeIn 0.15s ease-out;
+}
+
+/* Анимация "королевского" стрика 100+ дней/недель/месяцев */
+@keyframes streakRoyalPulse {
+  0%, 100% { box-shadow: 0 0 0 2px #fde68a inset, 0 0 8px rgba(251, 191, 36, 0.4); }
+  50%      { box-shadow: 0 0 0 2px #fbbf24 inset, 0 0 16px rgba(251, 191, 36, 0.8); }
+}
+.streak-royal-pulse {
+  animation: streakRoyalPulse 2.2s ease-in-out infinite;
+}
