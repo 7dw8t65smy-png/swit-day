@@ -32,14 +32,17 @@ import {
 import type { MindMapDoc, MindMapLayout, MindMapNode } from '@swit/shared';
 import { useMindMap } from '../lib/mindmap/store';
 import { layoutMap } from '../lib/mindmap/layout';
-import { DEFAULT_BRANCH_COLORS, descendantIds } from '../lib/mindmap/doc';
+import { descendantIds } from '../lib/mindmap/doc';
 import { navTarget, findDropTarget, type ArrowKey } from '../lib/mindmap/nav';
+import { getTheme, type MindMapThemeDef } from '../lib/mindmap/themes';
 import MindNode, { type MindNodeData } from '../components/mindmap/MindNode';
+import BranchEdge from '../components/mindmap/BranchEdge';
 import Inspector from '../components/mindmap/Inspector';
 import MapSearch from '../components/mindmap/MapSearch';
+import ThemeMenu from '../components/mindmap/ThemeMenu';
 
 const nodeTypes = { mind: MindNode };
-const ROOT_COLOR = '#334155';
+const edgeTypes = { branch: BranchEdge };
 
 const LAYOUTS: { value: MindMapLayout; label: string; icon: typeof PanelRight }[] = [
   { value: 'right', label: 'Вправо', icon: PanelRight },
@@ -54,7 +57,12 @@ interface BuiltView {
 
 // Один O(N) проход: индекс детей, позиции, цвета веток, глубина → ноды и рёбра.
 // Раньше цвет/глубина считались на каждый рендер для каждого узла (O(N^2)).
-function buildView(doc: MindMapDoc, selectedId: string | null, editingId: string | null): BuiltView {
+function buildView(
+  doc: MindMapDoc,
+  selectedId: string | null,
+  editingId: string | null,
+  theme: MindMapThemeDef
+): BuiltView {
   const byId = new Map<string, MindMapNode>();
   const children = new Map<string, MindMapNode[]>();
   for (const n of doc.nodes) {
@@ -95,7 +103,7 @@ function buildView(doc: MindMapDoc, selectedId: string | null, editingId: string
   };
 
   const root = byId.get(doc.rootId);
-  if (root) pushNode(root, ROOT_COLOR, 0);
+  if (root) pushNode(root, theme.rootColor, 0);
 
   const walk = (n: MindMapNode, color: string, depth: number): void => {
     pushNode(n, color, depth);
@@ -104,8 +112,8 @@ function buildView(doc: MindMapDoc, selectedId: string | null, editingId: string
         id: `${n.parentId}-${n.id}`,
         source: n.parentId,
         target: n.id,
-        type: 'default',
-        style: { stroke: color }
+        type: 'branch',
+        data: { color, depth }
       });
     }
     if (n.collapsed) return;
@@ -113,7 +121,7 @@ function buildView(doc: MindMapDoc, selectedId: string | null, editingId: string
   };
 
   (children.get(doc.rootId) ?? []).forEach((c, i) => {
-    const color = c.color ?? DEFAULT_BRANCH_COLORS[i % DEFAULT_BRANCH_COLORS.length];
+    const color = c.color ?? theme.branchColors[i % theme.branchColors.length];
     walk(c, color, 1);
   });
 
@@ -163,9 +171,10 @@ export default function MapEditor(): JSX.Element {
     setSearchOpen(false);
   }, []);
 
+  const theme = getTheme(doc?.theme);
   const view = useMemo(
-    () => (doc ? buildView(doc, selectedId, editingId) : { nodes: [], edges: [] }),
-    [doc, selectedId, editingId]
+    () => (doc ? buildView(doc, selectedId, editingId, theme) : { nodes: [], edges: [] }),
+    [doc, selectedId, editingId, theme]
   );
 
   // React Flow владеет массивами (размеры/измерения), мы заменяем их при
@@ -310,6 +319,8 @@ export default function MapEditor(): JSX.Element {
             </ToolbarBtn>
           ))}
 
+          <ThemeMenu />
+
           <span className="w-px h-5 bg-border mx-1" />
 
           <ToolbarBtn
@@ -360,10 +371,11 @@ export default function MapEditor(): JSX.Element {
             </div>
           ) : (
             <ReactFlow
-              className="mind-canvas"
+              className={['mind-canvas', theme.canvasClass].filter(Boolean).join(' ')}
               nodes={nodes}
               edges={edges}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onNodeClick={onNodeClick}

@@ -5,16 +5,53 @@
 .mind-canvas {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(circle at 1px 1px, var(--color-border) 1px, transparent 0) 0 0 / 22px 22px;
+  /* Слои фона: атмосфера темы (по умолчанию пустая) поверх точечной сетки. */
+  --mind-dot: var(--color-border);
+  --mind-atmo: linear-gradient(transparent, transparent);
+  background-image:
+    var(--mind-atmo),
+    radial-gradient(circle at 1px 1px, var(--mind-dot) 1px, transparent 0);
+  background-size:
+    cover,
+    22px 22px;
+  background-position:
+    center,
+    0 0;
+  background-repeat: no-repeat, repeat;
+  transition: background-image 300ms ease;
 }
 .dark .mind-canvas {
-  background:
-    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.06) 1px, transparent 0) 0 0 / 22px 22px;
+  --mind-dot: rgba(255, 255, 255, 0.06);
+}
+
+/* Атмосфера тем (Wave C) */
+.mind-canvas--aurora {
+  --mind-atmo: radial-gradient(120% 95% at 50% -12%, rgba(124, 58, 237, 0.13), transparent 55%),
+    radial-gradient(90% 70% at 100% 110%, rgba(8, 145, 178, 0.12), transparent 60%);
+}
+.mind-canvas--forest {
+  --mind-atmo: radial-gradient(120% 95% at 50% -12%, rgba(5, 150, 105, 0.12), transparent 55%),
+    radial-gradient(90% 70% at 0% 110%, rgba(101, 163, 13, 0.1), transparent 60%);
+}
+.mind-canvas--sunset {
+  --mind-atmo: radial-gradient(120% 95% at 50% -12%, rgba(234, 88, 12, 0.14), transparent 55%),
+    radial-gradient(90% 70% at 100% 110%, rgba(219, 39, 119, 0.1), transparent 60%);
+}
+.mind-canvas--ocean {
+  --mind-atmo: radial-gradient(120% 95% at 50% -12%, rgba(14, 165, 233, 0.14), transparent 55%),
+    radial-gradient(90% 70% at 0% 110%, rgba(37, 99, 235, 0.1), transparent 60%);
+}
+.mind-canvas--mono {
+  --mind-atmo: radial-gradient(120% 95% at 50% -12%, rgba(71, 85, 105, 0.12), transparent 55%);
 }
 
 .mind-canvas .react-flow__background {
   opacity: 0;
+}
+
+/* Ребро-ветвь (Wave C) */
+.mind-edge {
+  transition: stroke-width 140ms ease;
 }
 
 /* --- Узел --- */
@@ -518,4 +555,52 @@
   text-align: center;
   font-size: 13px;
   color: var(--color-muted, #64748b);
+}
+
+/* --- Меню тем (Wave C) --- */
+.mind-theme-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: 196px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 11px;
+  box-shadow: 0 18px 50px -22px rgba(15, 23, 42, 0.6);
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: mind-search-drop 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mind-theme-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text);
+  text-align: left;
+}
+.mind-theme-item:hover {
+  background: var(--color-surface-2);
+}
+.mind-theme-name {
+  flex: 1;
+}
+.mind-theme-dots {
+  display: inline-flex;
+}
+.mind-theme-dots span {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  margin-left: -3px;
+  box-shadow: 0 0 0 1.5px var(--color-surface);
+}
+.mind-theme-dots span:first-child {
+  margin-left: 0;
 }
