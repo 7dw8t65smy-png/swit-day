@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { nanoid } from 'nanoid';
 import { Plus, Copy, Trash2, Network, Loader2 } from 'lucide-react';
@@ -6,6 +6,8 @@ import type { MindMap, MindMapDoc } from '@swit/shared';
 import { api } from '../api';
 import { pushToast } from '../hooks/useToasts';
 import { createBlankDoc, DEFAULT_BRANCH_COLORS } from '../lib/mindmap/doc';
+import { getTheme } from '../lib/mindmap/themes';
+import { toSvg } from '../lib/mindmap/exporters';
 
 interface Template {
   key: string;
@@ -49,6 +51,19 @@ const TEMPLATES: Template[] = [
     title: 'Недельный обзор',
     hint: 'Итоги · Приоритеты · Привычки',
     build: () => withChildren('Неделя', ['Итоги', 'Приоритеты', 'Привычки', 'Заметки'])
+  },
+  {
+    key: 'swot',
+    title: 'SWOT-анализ',
+    hint: 'Сильные · Слабые · Возможности · Угрозы',
+    build: () =>
+      withChildren('SWOT', ['Сильные стороны', 'Слабые стороны', 'Возможности', 'Угрозы'])
+  },
+  {
+    key: 'okr',
+    title: 'Цели (OKR)',
+    hint: 'Цель · Ключевые результаты',
+    build: () => withChildren('Цель квартала', ['KR 1', 'KR 2', 'KR 3', 'Инициативы'])
   }
 ];
 
@@ -119,7 +134,8 @@ export default function Maps(): JSX.Element {
           <Network className="text-accent" size={24} /> Карты
         </h1>
         <p className="text-sm text-muted mt-1">
-          Интеллект-карты для идей, планов и структур. Tab — дочерний узел, Enter — соседний.
+          Интеллект-карты для идей, планов и структур. Tab — дочерний узел, Enter — соседний,
+          стрелки — навигация, ⌘F — поиск.
         </p>
       </header>
 
@@ -195,10 +211,16 @@ function MapCard({
   onDuplicate: () => void;
 }): JSX.Element {
   const nodeCount = doc?.nodes.length ?? 0;
-  const branchColors = (doc?.nodes ?? [])
-    .filter((n) => n.parentId === doc?.rootId)
-    .slice(0, 6)
-    .map((_, i) => DEFAULT_BRANCH_COLORS[i % DEFAULT_BRANCH_COLORS.length]);
+  // Живое мини-превью карты: настоящий SVG дерева (та же раскладка и тема).
+  const previewSrc = useMemo(() => {
+    if (!doc) return null;
+    try {
+      const svg = toSvg(doc, getTheme(doc.theme));
+      return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    } catch {
+      return null;
+    }
+  }, [doc]);
 
   return (
     <div
@@ -206,21 +228,13 @@ function MapCard({
       className="group relative rounded-xl border border-border bg-surface overflow-hidden cursor-pointer hover:border-accent hover:-translate-y-0.5 transition-all"
       style={{ boxShadow: '0 1px 2px rgba(15,23,42,0.05)' }}
     >
-      {/* Мини-превью: «созвездие» цветов веток */}
-      <div className="relative h-24 bg-surface2 overflow-hidden">
-        <div className="absolute left-4 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-ink/70" />
-        {branchColors.map((c, i) => (
-          <span
-            key={i}
-            className="absolute w-2.5 h-2.5 rounded-full"
-            style={{
-              background: c,
-              left: `${30 + i * 11}%`,
-              top: `${28 + ((i * 37) % 50)}%`,
-              boxShadow: `0 0 0 4px ${c}22`
-            }}
-          />
-        ))}
+      {/* Мини-превью: настоящее дерево карты */}
+      <div className="relative h-28 bg-surface2 overflow-hidden grid place-items-center">
+        {previewSrc ? (
+          <img src={previewSrc} alt="" className="w-full h-full object-contain p-2" draggable={false} />
+        ) : (
+          <Network className="text-faint" size={22} />
+        )}
       </div>
 
       <div className="p-3.5">

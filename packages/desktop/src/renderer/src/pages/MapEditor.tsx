@@ -40,6 +40,7 @@ import BranchEdge from '../components/mindmap/BranchEdge';
 import Inspector from '../components/mindmap/Inspector';
 import MapSearch from '../components/mindmap/MapSearch';
 import ThemeMenu from '../components/mindmap/ThemeMenu';
+import ExportMenu from '../components/mindmap/ExportMenu';
 
 const nodeTypes = { mind: MindNode };
 const edgeTypes = { branch: BranchEdge };
@@ -346,6 +347,7 @@ export default function MapEditor(): JSX.Element {
           <ToolbarBtn title="Фокус на ветке (⌘.)" disabled={!selectedId} onClick={focusSelected}>
             <Crosshair size={16} />
           </ToolbarBtn>
+          <ExportMenu />
 
           <span className="w-px h-5 bg-border mx-1" />
 

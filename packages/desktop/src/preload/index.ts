@@ -7,6 +7,11 @@ const api = {
     ipcRenderer.invoke('notification:show', { title, body }),
   notifyAutoPauseSettingsChanged: (): Promise<void> =>
     ipcRenderer.invoke('autopause:settings-changed'),
+  saveFile: (opts: {
+    defaultName: string;
+    data: string;
+    base64?: boolean;
+  }): Promise<{ saved: boolean; path?: string }> => ipcRenderer.invoke('export:save-file', opts),
   onTimerChanged: (cb: () => void): (() => void) => {
     const handler = () => cb();
     ipcRenderer.on('timer:changed', handler);

@@ -1,5 +1,6 @@
-import { app, BrowserWindow, shell, ipcMain, Notification } from 'electron';
+import { app, BrowserWindow, shell, ipcMain, Notification, dialog } from 'electron';
 import { createWriteStream, mkdirSync, type WriteStream } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -189,6 +190,25 @@ ipcMain.handle('notification:show', async (_e, payload: { title: string; body?: 
 ipcMain.handle('autopause:settings-changed', () => {
   refreshAutoPauseSettings();
 });
+
+// Экспорт карты: нативный диалог сохранения + запись файла.
+// data — UTF-8 текст (md/opml/svg) или base64 (png, base64=true).
+ipcMain.handle(
+  'export:save-file',
+  async (_e, payload: { defaultName: string; data: string; base64?: boolean }) => {
+    const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
+    const opts = { defaultPath: payload.defaultName };
+    const result = win
+      ? await dialog.showSaveDialog(win, opts)
+      : await dialog.showSaveDialog(opts);
+    if (result.canceled || !result.filePath) return { saved: false };
+    const contents = payload.base64
+      ? Buffer.from(payload.data, 'base64')
+      : Buffer.from(payload.data, 'utf8');
+    await writeFile(result.filePath, contents);
+    return { saved: true, path: result.filePath };
+  }
+);
 
 app.whenReady().then(async () => {
   await startServer();
