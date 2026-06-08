@@ -133,6 +133,25 @@ export function toggleCollapse(doc: MindMapDoc, id: string): MindMapDoc {
   return updateNode(doc, id, { collapsed: !node.collapsed });
 }
 
+/**
+ * Меняет местами соседний узел с предыдущим (dir=-1) или следующим (dir=1).
+ * Порядок раскладки задаётся порядком узлов в doc.nodes, поэтому переставляем
+ * абсолютные позиции двух соседей. Структура (parentId) не меняется.
+ */
+export function reorderSibling(doc: MindMapDoc, id: string, dir: -1 | 1): MindMapDoc {
+  const node = getNode(doc, id);
+  if (!node || !node.parentId) return doc; // корень не переставляем
+  const siblings = doc.nodes.filter((n) => n.parentId === node.parentId);
+  const sibIdx = siblings.findIndex((n) => n.id === id);
+  const target = siblings[sibIdx + dir];
+  if (!target) return doc; // край списка — ноп
+  const aIdx = doc.nodes.findIndex((n) => n.id === id);
+  const bIdx = doc.nodes.findIndex((n) => n.id === target.id);
+  const nodes = [...doc.nodes];
+  [nodes[aIdx], nodes[bIdx]] = [nodes[bIdx], nodes[aIdx]];
+  return replaceNodes(doc, nodes);
+}
+
 /** Переносит узел под нового родителя. Защита от циклов и переноса корня. */
 export function moveNode(doc: MindMapDoc, id: string, newParentId: string): MindMapDoc {
   const node = getNode(doc, id);
@@ -173,6 +192,26 @@ export function removeTag(doc: MindMapDoc, id: string, tag: string): MindMapDoc 
   const node = getNode(doc, id);
   if (!node || !node.tags?.includes(tag)) return doc;
   return updateNode(doc, id, { tags: node.tags.filter((t) => t !== tag) });
+}
+
+/** Раскрывает всех предков узла (чтобы он стал видимым). Иммутабельно. */
+export function expandTo(doc: MindMapDoc, id: string): MindMapDoc {
+  const ancestors = new Set<string>();
+  let cur = getNode(doc, id);
+  while (cur && cur.parentId) {
+    ancestors.add(cur.parentId);
+    cur = getNode(doc, cur.parentId);
+  }
+  if (ancestors.size === 0) return doc;
+  let changed = false;
+  const nodes = doc.nodes.map((n) => {
+    if (ancestors.has(n.id) && n.collapsed) {
+      changed = true;
+      return { ...n, collapsed: false };
+    }
+    return n;
+  });
+  return changed ? replaceNodes(doc, nodes) : doc;
 }
 
 /** Узлы, видимые на холсте (не под свёрнутым предком). */

@@ -14,7 +14,9 @@ import {
   visibleNodes,
   setTheme,
   addTag,
-  removeTag
+  removeTag,
+  reorderSibling,
+  expandTo
 } from './doc';
 
 // Дерево:  root → a → a1
@@ -171,5 +173,46 @@ describe('addTag / removeTag', () => {
   it('removeTag — ноп, если тега нет', () => {
     const doc = addTag(tree(), 'a', 'one');
     expect(removeTag(doc, 'a', 'missing')).toBe(doc);
+  });
+});
+
+describe('reorderSibling', () => {
+  it('двигает соседа вниз (порядок раскладки меняется)', () => {
+    const next = reorderSibling(tree(), 'a', 1);
+    expect(getChildren(next, 'root').map((n) => n.id)).toEqual(['b', 'a']);
+  });
+  it('двигает соседа вверх', () => {
+    const down = reorderSibling(tree(), 'a', 1); // [b, a]
+    const up = reorderSibling(down, 'a', -1); // обратно [a, b]
+    expect(getChildren(up, 'root').map((n) => n.id)).toEqual(['a', 'b']);
+  });
+  it('на краю списка — ноп (возвращает тот же объект)', () => {
+    const doc = tree();
+    expect(reorderSibling(doc, 'a', -1)).toBe(doc); // 'a' уже первый
+    expect(reorderSibling(doc, 'b', 1)).toBe(doc); // 'b' уже последний
+  });
+  it('корень не переставляется', () => {
+    const doc = tree();
+    expect(reorderSibling(doc, 'root', 1)).toBe(doc);
+  });
+  it('структура (parentId) сохраняется', () => {
+    const next = reorderSibling(tree(), 'a', 1);
+    expect(next.nodes.find((n) => n.id === 'a1')?.parentId).toBe('a');
+  });
+});
+
+describe('expandTo', () => {
+  it('раскрывает свёрнутого предка', () => {
+    const collapsed = updateNode(tree(), 'a', { collapsed: true });
+    const next = expandTo(collapsed, 'a1');
+    expect(next.nodes.find((n) => n.id === 'a')?.collapsed).toBe(false);
+  });
+  it('ноп, если предки уже раскрыты', () => {
+    const doc = tree();
+    expect(expandTo(doc, 'a1')).toBe(doc);
+  });
+  it('ноп для корня', () => {
+    const doc = tree();
+    expect(expandTo(doc, 'root')).toBe(doc);
   });
 });

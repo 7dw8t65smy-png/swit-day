@@ -38,6 +38,10 @@ interface MindMapState {
   setTheme: (theme: string) => void;
   addTag: (id: string, tag: string) => void;
   removeTag: (id: string, tag: string) => void;
+  reorderSibling: (id: string, dir: -1 | 1) => void;
+  moveNode: (id: string, newParentId: string) => void;
+  /** Раскрывает предков узла и выделяет его (для перехода из поиска). */
+  reveal: (id: string) => void;
 
   undo: () => void;
   redo: () => void;
@@ -152,6 +156,12 @@ export const useMindMap = create<MindMapState>((set, get) => ({
   setTheme: (theme) => get().apply((d) => ops.setTheme(d, theme)),
   addTag: (id, tag) => get().apply((d) => ops.addTag(d, id, tag)),
   removeTag: (id, tag) => get().apply((d) => ops.removeTag(d, id, tag)),
+  reorderSibling: (id, dir) => get().apply((d) => ops.reorderSibling(d, id, dir)),
+  moveNode: (id, newParentId) => get().apply((d) => ops.moveNode(d, id, newParentId)),
+  reveal: (id) => {
+    get().apply((d) => ops.expandTo(d, id));
+    set({ selectedId: id });
+  },
 
   undo: () => {
     const { past, doc, future } = get();

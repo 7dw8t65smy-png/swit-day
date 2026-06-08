@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
@@ -9,7 +9,9 @@ import {
   useEdgesState,
   type Node,
   type Edge,
-  type NodeMouseHandler
+  type NodeMouseHandler,
+  type OnNodeDrag,
+  type ReactFlowInstance
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import '../components/mindmap/mindmap.css';
@@ -23,14 +25,18 @@ import {
   PanelRight,
   PanelLeft,
   Network,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Search,
+  Crosshair
 } from 'lucide-react';
 import type { MindMapDoc, MindMapLayout, MindMapNode } from '@swit/shared';
 import { useMindMap } from '../lib/mindmap/store';
 import { layoutMap } from '../lib/mindmap/layout';
-import { DEFAULT_BRANCH_COLORS } from '../lib/mindmap/doc';
+import { DEFAULT_BRANCH_COLORS, descendantIds } from '../lib/mindmap/doc';
+import { navTarget, findDropTarget, type ArrowKey } from '../lib/mindmap/nav';
 import MindNode, { type MindNodeData } from '../components/mindmap/MindNode';
 import Inspector from '../components/mindmap/Inspector';
+import MapSearch from '../components/mindmap/MapSearch';
 
 const nodeTypes = { mind: MindNode };
 const ROOT_COLOR = '#334155';
@@ -128,11 +134,34 @@ export default function MapEditor(): JSX.Element {
   const canRedo = useMindMap((s) => s.future.length > 0);
 
   const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const rfRef = useRef<ReactFlowInstance | null>(null);
 
   useEffect(() => {
     void useMindMap.getState().load(id);
     return () => useMindMap.getState().reset();
   }, [id]);
+
+  // Зум к выбранному узлу и его поддереву.
+  const focusSelected = useCallback(() => {
+    const s = useMindMap.getState();
+    const d = s.doc;
+    const sel = s.selectedId;
+    if (!d || !sel || !rfRef.current) return;
+    const ids = [sel, ...descendantIds(d, sel)].map((i) => ({ id: i }));
+    rfRef.current.fitView({ nodes: ids, duration: 450, padding: 0.4, maxZoom: 1.3 });
+  }, []);
+
+  // Переход к узлу из поиска: раскрыть предков, выделить, центрировать.
+  const jumpTo = useCallback((nodeId: string) => {
+    const s = useMindMap.getState();
+    if (!s.doc) return;
+    s.reveal(nodeId);
+    const d = useMindMap.getState().doc;
+    const p = d ? layoutMap(d)[nodeId] : undefined;
+    if (p && rfRef.current) rfRef.current.setCenter(p.x, p.y, { zoom: 1.1, duration: 450 });
+    setSearchOpen(false);
+  }, []);
 
   const view = useMemo(
     () => (doc ? buildView(doc, selectedId, editingId) : { nodes: [], edges: [] }),
@@ -159,6 +188,23 @@ export default function MapEditor(): JSX.Element {
     s.setEditing(null);
   };
 
+  // Drag-to-reparent: бросаем узел рядом с другим — он становится новым
+  // родителем. Если цели нет — возвращаем узел на место (раскладка пересчитается).
+  const onNodeDragStop: OnNodeDrag = (_e, node) => {
+    const s = useMindMap.getState();
+    if (!s.doc || node.id === s.doc.rootId) {
+      setNodes(view.nodes);
+      return;
+    }
+    const target = findDropTarget(s.doc, node.id, { x: node.position.x, y: node.position.y });
+    if (target) {
+      s.moveNode(node.id, target);
+      s.select(node.id);
+    } else {
+      setNodes(view.nodes);
+    }
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const s = useMindMap.getState();
@@ -167,6 +213,16 @@ export default function MapEditor(): JSX.Element {
       if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
 
       const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
+      if (mod && e.key === '.') {
+        e.preventDefault();
+        focusSelected();
+        return;
+      }
       if (mod && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) s.redo();
@@ -174,7 +230,21 @@ export default function MapEditor(): JSX.Element {
         return;
       }
       const sel = s.selectedId;
-      if (!sel) return;
+      if (!sel || !s.doc) return;
+
+      if (e.key.startsWith('Arrow')) {
+        e.preventDefault();
+        const horizontal = s.doc.layout !== 'tree';
+        const prevArrow = horizontal ? 'ArrowUp' : 'ArrowLeft';
+        const nextArrow = horizontal ? 'ArrowDown' : 'ArrowRight';
+        if (e.altKey && (e.key === prevArrow || e.key === nextArrow)) {
+          s.reorderSibling(sel, e.key === prevArrow ? -1 : 1);
+        } else {
+          const next = navTarget(s.doc, sel, e.key as ArrowKey);
+          if (next) s.select(next);
+        }
+        return;
+      }
 
       if (e.key === 'Tab') {
         e.preventDefault();
@@ -183,7 +253,7 @@ export default function MapEditor(): JSX.Element {
         e.preventDefault();
         s.addSibling(sel);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (s.doc && sel !== s.doc.rootId) {
+        if (sel !== s.doc.rootId) {
           e.preventDefault();
           s.removeNode(sel);
         }
@@ -196,7 +266,7 @@ export default function MapEditor(): JSX.Element {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [focusSelected]);
 
   const rootSelected = !!doc && selectedId === doc.rootId;
 
@@ -259,6 +329,15 @@ export default function MapEditor(): JSX.Element {
 
           <span className="w-px h-5 bg-border mx-1" />
 
+          <ToolbarBtn title="Поиск (⌘F)" active={searchOpen} onClick={() => setSearchOpen(true)}>
+            <Search size={16} />
+          </ToolbarBtn>
+          <ToolbarBtn title="Фокус на ветке (⌘.)" disabled={!selectedId} onClick={focusSelected}>
+            <Crosshair size={16} />
+          </ToolbarBtn>
+
+          <span className="w-px h-5 bg-border mx-1" />
+
           <ToolbarBtn
             title="Панель свойств"
             active={inspectorOpen}
@@ -289,10 +368,13 @@ export default function MapEditor(): JSX.Element {
               onEdgesChange={onEdgesChange}
               onNodeClick={onNodeClick}
               onNodeDoubleClick={onNodeDoubleClick}
+              onNodeDragStop={onNodeDragStop}
               onPaneClick={onPaneClick}
+              onInit={(inst) => (rfRef.current = inst)}
               nodeOrigin={[0.5, 0.5]}
-              nodesDraggable={false}
+              nodesDraggable
               nodesConnectable={false}
+              disableKeyboardA11y
               onlyRenderVisibleElements
               fitView
               fitViewOptions={{ padding: 0.3, maxZoom: 1.1 }}
@@ -310,6 +392,8 @@ export default function MapEditor(): JSX.Element {
               />
             </ReactFlow>
           )}
+
+          {searchOpen && <MapSearch onJump={jumpTo} onClose={() => setSearchOpen(false)} />}
         </div>
 
         {inspectorOpen && <Inspector onClose={() => setInspectorOpen(false)} />}
