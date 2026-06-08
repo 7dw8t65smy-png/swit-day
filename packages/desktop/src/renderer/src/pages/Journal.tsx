@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Plus } from 'lucide-react';
 import { api } from '../api';
 import type { DayTotals, JournalEntry } from '@swit/shared';
 import { fmtHM, fmtClock } from '../lib/format';
+import { localDateKey } from '../lib/date';
 
 const MOOD_EMOJI = ['', '😞', '😕', '😐', '🙂', '😄'];
 const MOODS = [1, 2, 3, 4, 5] as const;
@@ -69,9 +70,7 @@ export default function Journal() {
     // Внутри даты — сортировка возр. created_at, чтобы первая запись = «1»
     const info = new Map<string, { idx: number; total: number }>();
     for (const [, list] of byDate) {
-      const sorted = [...list].sort((a, b) =>
-        a.created_at.localeCompare(b.created_at)
-      );
+      const sorted = [...list].sort((a, b) => a.created_at.localeCompare(b.created_at));
       sorted.forEach((e, i) => {
         info.set(e.id, { idx: i + 1, total: sorted.length });
       });
@@ -104,6 +103,22 @@ export default function Journal() {
     }
   }
 
+  async function newEntry(): Promise<void> {
+    const created = await api.createJournal({
+      date: localDateKey(),
+      mood: null,
+      what_done: '',
+      reflection: '',
+      total_work_s: 0,
+      total_pause_s: 0,
+      tasks_done: 0
+    });
+    setEntries((cur) => [created, ...cur]);
+    setSelectedId(created.id);
+    setDraft({ mood: null, what_done: '', reflection: '' });
+    setEditing(true);
+  }
+
   async function deleteEntry(id: string): Promise<void> {
     if (!confirm('Удалить эту запись из журнала?')) return;
     await api.deleteJournal(id);
@@ -114,7 +129,15 @@ export default function Journal() {
   return (
     <div className="p-6 grid grid-cols-[320px_1fr] gap-6 max-w-[1300px]">
       <aside className="space-y-2">
-        <h1 className="text-xl font-semibold mb-2">Журнал</h1>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-xl font-semibold">Журнал</h1>
+          <button
+            onClick={newEntry}
+            className="text-xs px-2.5 py-1.5 rounded-md bg-accent text-white hover:bg-accent-hover flex items-center gap-1"
+          >
+            <Plus size={13} /> Новая
+          </button>
+        </div>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -156,9 +179,7 @@ export default function Journal() {
             </button>
           );
         })}
-        {filtered.length === 0 && (
-          <div className="text-sm text-muted">Записей пока нет</div>
-        )}
+        {filtered.length === 0 && <div className="text-sm text-muted">Записей пока нет</div>}
       </aside>
 
       <main>
@@ -178,7 +199,7 @@ export default function Journal() {
           />
         ) : (
           <div className="bg-surface rounded-lg shadow-sm p-10 text-center text-muted text-sm">
-            Записей пока нет. Завершите день, чтобы появились итоги.
+            Записей пока нет. Нажмите «Новая», чтобы добавить запись.
           </div>
         )}
       </main>
@@ -238,9 +259,7 @@ function Detail({
             <div className="text-xs text-muted mt-1 timer-font">
               Сохранено в {fmtClock(entry.created_at)}
             </div>
-            {entry.mood && (
-              <div className="text-3xl mt-2">{MOOD_EMOJI[entry.mood]}</div>
-            )}
+            {entry.mood && <div className="text-3xl mt-2">{MOOD_EMOJI[entry.mood]}</div>}
           </div>
           {!editing && (
             <div className="flex items-center gap-2">
@@ -383,11 +402,7 @@ function Cell({
   accent?: 'work' | 'pause';
 }): JSX.Element {
   const color =
-    accent === 'work'
-      ? 'var(--color-work)'
-      : accent === 'pause'
-        ? 'var(--color-pause)'
-        : undefined;
+    accent === 'work' ? 'var(--color-work)' : accent === 'pause' ? 'var(--color-pause)' : undefined;
   return (
     <div className="bg-surface2 rounded-md p-3">
       <div className="text-[11px] uppercase text-muted">{label}</div>

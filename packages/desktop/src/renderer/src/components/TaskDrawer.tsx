@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
-import { X, Trash2, Play, Square, Pin, PinOff, Calendar as CalIcon, Clock } from 'lucide-react';
-import type { Note, Project, Task, TaskDifficulty, TaskPriority, TaskTimeLog } from '@swit/shared';
+import { useEffect, useState } from 'react';
+import { X, Trash2, Pin, PinOff } from 'lucide-react';
+import type { Note, Project, Task, TaskDifficulty, TaskPriority } from '@swit/shared';
 import { api } from '../api';
 import { PRIORITIES, PRIORITY_LABEL } from '../lib/priority';
 import { DIFFICULTIES, DIFFICULTY_ICON, DIFFICULTY_LABEL } from '../lib/difficulty';
-import { fmtHM } from '../lib/format';
 import Subtasks from './Subtasks';
 
 interface Props {
@@ -26,10 +25,7 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
   const [dueTime, setDueTime] = useState<string>('');
   const [estimated, setEstimated] = useState<string>('');
   const [notes, setNotes] = useState<Note[]>([]);
-  const [logs, setLogs] = useState<TaskTimeLog[]>([]);
-  const [activeLog, setActiveLog] = useState<TaskTimeLog | null>(null);
   const [newNote, setNewNote] = useState('');
-  const [, force] = useState(0);
 
   useEffect(() => {
     if (!task) return;
@@ -45,12 +41,6 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
   }, [task?.id]);
 
   useEffect(() => {
-    if (!activeLog) return undefined;
-    const id = window.setInterval(() => force((x) => x + 1), 1000);
-    return () => window.clearInterval(id);
-  }, [activeLog?.id]);
-
-  useEffect(() => {
     if (!task) return undefined;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -60,19 +50,13 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
   }, [task, onClose]);
 
   async function loadRelated(taskId: string) {
-    const [allNotes, all, active] = await Promise.all([
-      api.listNotes(),
-      api.timeLogs({ task_id: taskId }),
-      api.activeTimeLog()
-    ]);
+    const allNotes = await api.listNotes();
     setNotes(allNotes.filter((n) => n.task_id === taskId));
-    setLogs(all);
-    setActiveLog(active?.task_id === taskId ? active : null);
   }
 
   async function patch(b: Partial<Task>) {
     if (!task) return;
-    const updated = await api.updateTask(task.id, b);
+    await api.updateTask(task.id, b);
     await onChanged();
   }
 
@@ -89,18 +73,6 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
   }
   async function saveEstimated(v: string) {
     await patch({ estimated_min: v ? Number(v) : null });
-  }
-
-  async function startTimer() {
-    if (!task) return;
-    const log = await api.startTimeLog(task.id);
-    setActiveLog(log);
-    await loadRelated(task.id);
-  }
-  async function stopTimer() {
-    await api.stopTimeLog();
-    setActiveLog(null);
-    if (task) await loadRelated(task.id);
   }
 
   async function addNote() {
@@ -129,24 +101,13 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
     if (!task) return;
     if (!confirm('Удалить задачу? Заметки останутся.')) return;
     for (const n of notes) await api.updateNote(n.id, { task_id: null });
-    if (activeLog?.task_id === task.id) await api.stopTimeLog();
     const taskId = task.id;
     await api.deleteTask(taskId);
     onClose();
     await onChanged();
   }
 
-  const totalTime = useMemo(() => {
-    const closed = logs.filter((l) => l.ended_at).reduce((a, l) => a + (l.duration_s ?? 0), 0);
-    const live = activeLog
-      ? Math.floor((Date.now() - new Date(activeLog.started_at).getTime()) / 1000)
-      : 0;
-    return closed + live;
-  }, [logs, activeLog, force]);
-
   if (!task) return null;
-
-  const project = projects.find((p) => p.id === projectId) ?? null;
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end" onClick={onClose}>
@@ -178,9 +139,7 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
             <input
               type="checkbox"
               checked={task.status === 'done'}
-              onChange={() =>
-                patch({ status: task.status === 'done' ? 'pending' : 'done' })
-              }
+              onChange={() => patch({ status: task.status === 'done' ? 'pending' : 'done' })}
               className="mt-2 w-4 h-4"
             />
             <textarea
@@ -297,31 +256,6 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
             />
           </div>
 
-          {/* Time tracking */}
-          <div className="bg-surface2 rounded-lg p-3 flex items-center gap-3">
-            <Clock size={16} className="text-muted" />
-            <div className="flex-1">
-              <div className="text-xs uppercase text-muted">Затрачено</div>
-              <div className="text-lg font-semibold timer-font">{fmtHM(totalTime) || '0м'}</div>
-            </div>
-            {activeLog ? (
-              <button
-                onClick={stopTimer}
-                className="bg-pause text-white px-3 py-2 rounded-md text-sm flex items-center gap-1.5"
-                style={{ background: 'var(--color-pause)' }}
-              >
-                <Square size={12} /> Стоп
-              </button>
-            ) : (
-              <button
-                onClick={startTimer}
-                className="bg-accent text-white px-3 py-2 rounded-md text-sm flex items-center gap-1.5 hover:bg-accent-hover"
-              >
-                <Play size={12} /> Засечь время
-              </button>
-            )}
-          </div>
-
           {/* Subtasks */}
           <Subtasks parent={task} onOpenTask={onOpenTask} />
 
@@ -355,10 +289,7 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
               {notes
                 .sort((a, b) => Number(b.pinned) - Number(a.pinned))
                 .map((n) => (
-                  <div
-                    key={n.id}
-                    className="bg-surface2 rounded-md p-3 text-sm group relative"
-                  >
+                  <div key={n.id} className="bg-surface2 rounded-md p-3 text-sm group relative">
                     <div className="flex items-center gap-2 mb-1">
                       <div className="text-[10px] text-muted">
                         {n.created_at.slice(0, 16).replace('T', ' ')}
@@ -391,26 +322,6 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
               )}
             </div>
           </div>
-
-          {/* Time logs */}
-          {logs.length > 0 && (
-            <div>
-              <div className="text-xs uppercase text-muted mb-2">Сессии · {logs.length}</div>
-              <div className="space-y-1">
-                {logs.slice(0, 5).map((l) => (
-                  <div
-                    key={l.id}
-                    className="flex items-center justify-between text-xs text-muted px-2 py-1"
-                  >
-                    <span>{new Date(l.started_at).toLocaleString('ru-RU')}</span>
-                    <span className="timer-font">
-                      {l.ended_at ? fmtHM(l.duration_s ?? 0) : '… идёт'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </aside>
     </div>

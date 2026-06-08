@@ -1,9 +1,8 @@
 import { useMemo } from 'react';
-import { Sparkles, Play, Pin } from 'lucide-react';
+import { Sparkles, Pin } from 'lucide-react';
 import type { Project, Task } from '@swit/shared';
 import { suggestTasks } from '../lib/taskScore';
 import { api } from '../api';
-import ProjectBadge from './ProjectBadge';
 import PriorityBadge from './PriorityBadge';
 import DifficultyBadge from './DifficultyBadge';
 
@@ -13,7 +12,6 @@ interface Props {
   today: string;
   excludeIds?: Set<string>;
   onChanged: () => Promise<void>;
-  onStartTimer?: (taskId: string) => Promise<void>;
   onOpenTask?: (taskId: string) => void;
 }
 
@@ -23,7 +21,6 @@ export default function TaskSuggestions({
   today,
   excludeIds,
   onChanged,
-  onStartTimer,
   onOpenTask
 }: Props) {
   const suggestions = useMemo(
@@ -87,18 +84,6 @@ export default function TaskSuggestions({
                 title="Запланировать на сегодня"
               >
                 <Pin size={13} />
-              </button>
-            )}
-            {onStartTimer && task.status !== 'done' && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void onStartTimer(task.id);
-                }}
-                className="w-7 h-7 rounded-md text-faint hover:text-accent hover:bg-accent-light opacity-0 group-hover:opacity-100 flex items-center justify-center"
-                title="Засечь время"
-              >
-                <Play size={12} />
               </button>
             )}
           </li>

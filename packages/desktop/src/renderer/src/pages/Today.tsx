@@ -1,27 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Trash2, Play, Plus } from 'lucide-react';
+import { Trash2, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { api, notify } from '../api';
-import { useDayTimer } from '../store';
-import { useTimerDisplay } from '../hooks/useTimerDisplay';
-import type {
-  JournalEntry,
-  Note,
-  Project,
-  Task,
-  TaskTimeLog
-} from '@swit/shared';
+import type { Note, Project, Task } from '@swit/shared';
 import { sortByPriority } from '../lib/priority';
-import { fmtHM } from '../lib/format';
 import { localDateKey } from '../lib/date';
 import ProjectBadge from '../components/ProjectBadge';
 import PriorityBadge from '../components/PriorityBadge';
 import DifficultyBadge from '../components/DifficultyBadge';
-import DayTimer from '../components/DayTimer';
-import EndDayDialog from '../components/EndDayDialog';
-import CurrentTask from '../components/CurrentTask';
 import TaskDrawer from '../components/TaskDrawer';
 import DailyIntention from '../components/DailyIntention';
 import TodayEvents from '../components/TodayEvents';
@@ -31,8 +19,6 @@ import HabitChecklist from '../components/HabitChecklist';
 import { useSettings } from '../lib/settings';
 
 export default function Today() {
-  const timer = useDayTimer();
-  const display = useTimerDisplay(timer.totals);
   const defaultPriority = useSettings((s) => s.settings.default_priority);
   const defaultDifficulty = useSettings((s) => s.settings.default_difficulty);
   const nav = useNavigate();
@@ -40,60 +26,37 @@ export default function Today() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
-  // Все записи за сегодня. Каждое «Завершить день» добавляет новую.
-  const [journalsToday, setJournalsToday] = useState<JournalEntry[]>([]);
   const [defaultProjectId, setDefaultProjectId] = useState<string | null>(null);
   const [newTask, setNewTask] = useState('');
   const [newNote, setNewNote] = useState('');
   const [scratch, setScratch] = useState('');
-  const [endOpen, setEndOpen] = useState(false);
-  const [activeLog, setActiveLog] = useState<TaskTimeLog | null>(null);
-  const [logsToday, setLogsToday] = useState<TaskTimeLog[]>([]);
   const [drawerTaskId, setDrawerTaskId] = useState<string | null>(null);
 
   const today = localDateKey();
   const scratchKey = `swit:scratch:${today}`;
 
-  const projectById = useMemo(
-    () => new Map(projects.map((p) => [p.id, p] as const)),
-    [projects]
-  );
+  const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p] as const)), [projects]);
   const drawerTask = useMemo(
-    () => (drawerTaskId ? tasks.find((t) => t.id === drawerTaskId) ?? null : null),
+    () => (drawerTaskId ? (tasks.find((t) => t.id === drawerTaskId) ?? null) : null),
     [drawerTaskId, tasks]
   );
 
   useEffect(() => {
     void load();
-    const id = window.setInterval(() => void timer.refresh(), 30_000);
-    const off = window.swit?.onTimerChanged(() => void timer.refresh());
-    const offEndDay = window.swit?.onEndDayRequested(() => setEndOpen(true));
     setScratch(localStorage.getItem(scratchKey) ?? '');
-    return () => {
-      window.clearInterval(id);
-      off?.();
-      offEndDay?.();
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function load() {
-    await timer.refresh();
-    const [ts, ns, ps, j, al, lt, settings] = await Promise.all([
+    const [ts, ns, ps, settings] = await Promise.all([
       api.listTasks(),
       api.listNotes({ type: 'quick' }),
       api.listProjects(),
-      api.listJournalByDate(today),
-      api.activeTimeLog(),
-      api.timeLogs({ date: today }),
       api.getSettings()
     ]);
     setTasks(ts);
     setNotes(ns.slice(0, 5));
     setProjects(ps.filter((p) => !p.archived));
-    setJournalsToday(j);
-    setActiveLog(al);
-    setLogsToday(lt);
     setDefaultProjectId(settings.default_project_id || null);
   }
 
@@ -102,32 +65,6 @@ export default function Today() {
     if (v.trim()) localStorage.setItem(scratchKey, v);
     else localStorage.removeItem(scratchKey);
   }
-
-  async function startTaskTimer(taskId: string) {
-    const log = await api.startTimeLog(taskId);
-    setActiveLog(log);
-    setLogsToday(await api.timeLogs({ date: today }));
-  }
-
-  async function stopTaskTimer() {
-    await api.stopTimeLog();
-    setActiveLog(null);
-    setLogsToday(await api.timeLogs({ date: today }));
-  }
-
-  const activeTask = useMemo(
-    () => (activeLog ? tasks.find((t) => t.id === activeLog.task_id) ?? null : null),
-    [activeLog, tasks]
-  );
-
-  const taskSecondsToday = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const l of logsToday) {
-      if (!l.ended_at) continue;
-      m.set(l.task_id, (m.get(l.task_id) ?? 0) + (l.duration_s ?? 0));
-    }
-    return m;
-  }, [logsToday]);
 
   const tasksDoneToday = useMemo(
     () => tasks.filter((t) => t.status === 'done' && t.completed_at?.startsWith(today)).length,
@@ -159,48 +96,19 @@ export default function Today() {
     setNewNote('');
   }
 
-  async function confirmEndDay(data: {
-    mood: number | null;
-    what_done: string;
-    reflection: string;
-    total_work_s: number;
-    total_pause_s: number;
-    tasks_done: number;
-  }) {
-    // Каждое «Завершить день» — отдельная запись в журнале.
-    const saved = await api.createJournal({
-      date: today,
-      mood: data.mood,
-      what_done: data.what_done,
-      reflection: data.reflection,
-      total_work_s: data.total_work_s,
-      total_pause_s: data.total_pause_s,
-      tasks_done: data.tasks_done
-    });
-    setJournalsToday((cur) => [saved, ...cur]);
-    await timer.end();
-    setEndOpen(false);
-    notify('SWIT Day', 'День завершён, итоги в журнале');
-  }
-
-  // "Today" tasks = pinned to today OR overdue OR tracked today (top-level only)
-  const todayTaskIds = useMemo(() => {
-    const s = new Set<string>();
-    for (const l of logsToday) s.add(l.task_id);
-    return s;
-  }, [logsToday]);
-
+  // "Today" tasks = pinned to today OR overdue OR just-created (top-level only)
   const sortedTasks = useMemo(() => {
     const candidates = tasks.filter(
       (t) =>
         !t.parent_task_id &&
         (t.due_date === today ||
           (t.due_date && t.due_date < today && t.status !== 'done') ||
-          todayTaskIds.has(t.id) ||
-          (!t.due_date && t.status !== 'done' && Date.now() - new Date(t.created_at).getTime() < 60_000))
+          (!t.due_date &&
+            t.status !== 'done' &&
+            Date.now() - new Date(t.created_at).getTime() < 60_000))
     );
     return sortByPriority(candidates);
-  }, [tasks, today, todayTaskIds]);
+  }, [tasks, today]);
 
   const excludeFromSuggestions = useMemo(
     () => new Set(sortedTasks.map((t) => t.id)),
@@ -231,33 +139,6 @@ export default function Today() {
           )}
         </header>
 
-        <DayTimer
-          status={timer.status}
-          totals={timer.totals}
-          sessionSeconds={display.sessionSeconds}
-          dayWorkSeconds={display.dayWorkSeconds}
-          dayBreakSeconds={display.dayBreakSeconds}
-          dayPauseSeconds={display.dayPauseSeconds}
-          tasksDone={tasksDoneToday}
-          isAutoPause={timer.active?.type === 'pause' && timer.active?.notes === 'auto'}
-          onStart={() => timer.start()}
-          onPause={() => timer.pause()}
-          onBreak={() => timer.startBreak()}
-          onEnd={() => setEndOpen(true)}
-          onOpenJournal={() => nav('/journal')}
-          onStartNewDay={() => timer.startNewDay()}
-        />
-
-        <CurrentTask
-          task={activeTask}
-          project={
-            activeTask?.project_id ? projectById.get(activeTask.project_id) ?? null : null
-          }
-          activeLog={activeLog}
-          baseSecondsToday={activeTask ? taskSecondsToday.get(activeTask.id) ?? 0 : 0}
-          onStop={stopTaskTimer}
-        />
-
         <DailyIntention date={today} />
 
         <TaskSuggestions
@@ -266,7 +147,6 @@ export default function Today() {
           today={today}
           excludeIds={excludeFromSuggestions}
           onChanged={load}
-          onStartTimer={startTaskTimer}
           onOpenTask={setDrawerTaskId}
         />
 
@@ -275,10 +155,7 @@ export default function Today() {
             <div className="text-sm font-medium">
               Задачи на сегодня · {sortedTasks.filter((x) => x.status !== 'done').length} активно
             </div>
-            <button
-              onClick={() => nav('/tasks')}
-              className="text-xs text-muted hover:text-accent"
-            >
+            <button onClick={() => nav('/tasks')} className="text-xs text-muted hover:text-accent">
               Все задачи →
             </button>
           </div>
@@ -323,9 +200,7 @@ export default function Today() {
                   }}
                 />
                 <span
-                  className={
-                    task.status === 'done' ? 'line-through text-muted flex-1' : 'flex-1'
-                  }
+                  className={task.status === 'done' ? 'line-through text-muted flex-1' : 'flex-1'}
                 >
                   {task.title}
                 </span>
@@ -334,31 +209,9 @@ export default function Today() {
                 )}
                 <DifficultyBadge difficulty={task.difficulty ?? 'medium'} />
                 <PriorityBadge priority={task.priority} />
-                {(taskSecondsToday.get(task.id) ?? 0) > 0 && (
-                  <span className="text-[11px] text-muted timer-font">
-                    {fmtHM(taskSecondsToday.get(task.id) ?? 0)}
-                  </span>
-                )}
-                {task.status !== 'done' && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      startTaskTimer(task.id);
-                    }}
-                    title={activeLog?.task_id === task.id ? 'Уже идёт' : 'Засечь время'}
-                    className={`w-7 h-7 rounded-md flex items-center justify-center ${
-                      activeLog?.task_id === task.id
-                        ? 'bg-accent text-white'
-                        : 'text-faint hover:text-accent hover:bg-accent-light opacity-0 group-hover:opacity-100'
-                    }`}
-                  >
-                    <Play size={12} />
-                  </button>
-                )}
                 <button
                   onClick={async (e) => {
                     e.stopPropagation();
-                    if (activeLog?.task_id === task.id) await api.stopTimeLog();
                     await api.deleteTask(task.id);
                     setTasks((cur) => cur.filter((x) => x.id !== task.id));
                   }}
@@ -436,27 +289,8 @@ export default function Today() {
         onClose={() => setDrawerTaskId(null)}
         onOpenTask={setDrawerTaskId}
         onChanged={async () => {
-          const ts = await api.listTasks();
-          setTasks(ts);
-          setLogsToday(await api.timeLogs({ date: today }));
-          setActiveLog(await api.activeTimeLog());
+          setTasks(await api.listTasks());
         }}
-      />
-
-      <EndDayDialog
-        open={endOpen}
-        totals={timer.totals}
-        liveWorkSeconds={display.dayWorkSeconds}
-        liveBreakSeconds={display.dayBreakSeconds}
-        livePauseSeconds={display.dayPauseSeconds}
-        tasksDone={tasksDoneToday}
-        previousEntries={journalsToday}
-        initialWhatDone={scratch}
-        doneTasks={tasks}
-        projects={projects}
-        date={today}
-        onClose={() => setEndOpen(false)}
-        onConfirm={confirmEndDay}
       />
     </div>
   );

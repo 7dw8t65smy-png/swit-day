@@ -6,7 +6,6 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { initTray, destroyTray } from './tray.js';
 import { initReminders, destroyReminders } from './reminders.js';
-import { initAutoPause, destroyAutoPause, refreshAutoPauseSettings } from './autoPause.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -118,7 +117,10 @@ async function startServer(): Promise<void> {
 
   try {
     const mod = (await import(pathToFileURL(serverEntry).href)) as {
-      startSwitServer: (opts?: { host?: string; port?: number }) => Promise<{ close(): Promise<void> }>;
+      startSwitServer: (opts?: {
+        host?: string;
+        port?: number;
+      }) => Promise<{ close(): Promise<void> }>;
       stopSwitServer: (app: { close(): Promise<void> } | null) => Promise<void>;
     };
     const inst = await mod.startSwitServer({ host: '127.0.0.1', port: SERVER_PORT });
@@ -185,12 +187,6 @@ ipcMain.handle('notification:show', async (_e, payload: { title: string; body?: 
   await showAppNotification(payload.title, payload.body);
 });
 
-// Рендерер сохранил настройки — просим авто-паузу перечитать их немедленно,
-// чтобы изменения (вкл/выкл, порог простоя) применились без задержки опроса.
-ipcMain.handle('autopause:settings-changed', () => {
-  refreshAutoPauseSettings();
-});
-
 // Экспорт карты: нативный диалог сохранения + запись файла.
 // data — UTF-8 текст (md/opml/svg) или base64 (png, base64=true).
 ipcMain.handle(
@@ -198,9 +194,7 @@ ipcMain.handle(
   async (_e, payload: { defaultName: string; data: string; base64?: boolean }) => {
     const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
     const opts = { defaultPath: payload.defaultName };
-    const result = win
-      ? await dialog.showSaveDialog(win, opts)
-      : await dialog.showSaveDialog(opts);
+    const result = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
     if (result.canceled || !result.filePath) return { saved: false };
     const contents = payload.base64
       ? Buffer.from(payload.data, 'base64')
@@ -215,7 +209,6 @@ app.whenReady().then(async () => {
   createWindow();
   initTray({ serverUrl: SERVER_URL, getMainWindow: () => mainWindow });
   initReminders({ serverUrl: SERVER_URL });
-  initAutoPause({ serverUrl: SERVER_URL, getMainWindow: () => mainWindow });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -237,7 +230,6 @@ app.on('before-quit', (event) => {
   if (isQuitting) return;
   destroyTray();
   destroyReminders();
-  destroyAutoPause();
 
   if (!serverInstance) return;
 

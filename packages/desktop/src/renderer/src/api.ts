@@ -51,7 +51,8 @@ export interface BackupInfo {
 async function url(): Promise<string> {
   if (baseUrl) return baseUrl;
   // Try localStorage override (set by Settings page after save).
-  const override = typeof localStorage !== 'undefined' ? localStorage.getItem('swit:backend_url') : null;
+  const override =
+    typeof localStorage !== 'undefined' ? localStorage.getItem('swit:backend_url') : null;
   if (override) {
     baseUrl = override;
     bearer = localStorage.getItem('swit:backend_token');
@@ -127,10 +128,13 @@ export const api = {
 
   // projects
   listProjects: () => req<Project[]>('GET', '/projects'),
-  createProject: (b: { name: string; color?: string; icon?: string | null; description?: string | null }) =>
-    req<Project>('POST', '/projects', b),
-  updateProject: (id: string, b: Partial<Project>) =>
-    req<Project>('PATCH', `/projects/${id}`, b),
+  createProject: (b: {
+    name: string;
+    color?: string;
+    icon?: string | null;
+    description?: string | null;
+  }) => req<Project>('POST', '/projects', b),
+  updateProject: (id: string, b: Partial<Project>) => req<Project>('PATCH', `/projects/${id}`, b),
   deleteProject: (id: string) => req<{ ok: true }>('DELETE', `/projects/${id}`),
 
   // tasks
@@ -171,8 +175,7 @@ export const api = {
     date?: string | null;
     pinned?: number;
     tags?: string | null;
-  }) =>
-    req<Note>('POST', '/notes', b),
+  }) => req<Note>('POST', '/notes', b),
   updateNote: (id: string, b: Partial<Note>) => req<Note>('PATCH', `/notes/${id}`, b),
   deleteNote: (id: string) => req<{ ok: true }>('DELETE', `/notes/${id}`),
 
@@ -204,21 +207,12 @@ export const api = {
   deleteCanvas: (id: string) => req<{ ok: true }>('DELETE', `/canvases/${id}`),
   duplicateCanvas: (id: string) => req<Canvas>('POST', `/canvases/${id}/duplicate`),
 
-  // sessions
-  startSession: (type: 'work' | 'break' | 'pause', task_id?: string | null) =>
-    req<WorkSession>('POST', '/sessions/start', { type, task_id }),
-  stopSession: () => req<{ ok: true; ended_at: string }>('POST', '/sessions/stop'),
-  activeSession: () => req<WorkSession | null>('GET', '/sessions/active'),
+  // sessions / time logs — только чтение: журнал и статистика показывают
+  // историю; активного отслеживания времени в приложении больше нет.
   sessionsForDate: (date?: string) =>
     req<WorkSession[]>('GET', `/sessions${date ? `?date=${date}` : ''}`),
   dayTotals: (date?: string) =>
     req<DayTotals>('GET', `/sessions/totals${date ? `?date=${date}` : ''}`),
-
-  // time logs
-  startTimeLog: (task_id: string) =>
-    req<TaskTimeLog>('POST', '/time-logs/start', { task_id }),
-  stopTimeLog: () => req<{ ok: true }>('POST', '/time-logs/stop'),
-  activeTimeLog: () => req<TaskTimeLog | null>('GET', '/time-logs/active'),
   timeLogs: (q: { task_id?: string; date?: string } = {}) => {
     const qs = new URLSearchParams(q as Record<string, string>).toString();
     return req<TaskTimeLog[]>('GET', `/time-logs${qs ? `?${qs}` : ''}`);
@@ -240,8 +234,7 @@ export const api = {
     reminder_min?: number | null;
     color?: string | null;
     type?: CalendarEvent['type'];
-  }) =>
-    req<CalendarEvent>('POST', '/events', b),
+  }) => req<CalendarEvent>('POST', '/events', b),
   updateEvent: (id: string, b: Partial<CalendarEvent>) =>
     req<CalendarEvent>('PATCH', `/events/${id}`, b),
   deleteEvent: (id: string) => req<{ ok: true }>('DELETE', `/events/${id}`),
@@ -249,8 +242,7 @@ export const api = {
   // journal — одна дата может содержать несколько записей,
   // каждое «Завершить день» добавляет новую.
   listJournal: () => req<JournalEntry[]>('GET', '/journal'),
-  listJournalByDate: (date: string) =>
-    req<JournalEntry[]>('GET', `/journal/by-date/${date}`),
+  listJournalByDate: (date: string) => req<JournalEntry[]>('GET', `/journal/by-date/${date}`),
   getJournalById: (id: string) => req<JournalEntry | null>('GET', `/journal/${id}`),
   createJournal: (b: Partial<JournalEntry> & { date: string }) =>
     req<JournalEntry>('POST', '/journal', b),
@@ -266,8 +258,7 @@ export const api = {
     datetime: string;
     task_id?: string | null;
     event_id?: string | null;
-  }) =>
-    req<Reminder>('POST', '/reminders', b),
+  }) => req<Reminder>('POST', '/reminders', b),
   markFired: (id: string) => req<{ ok: true }>('POST', `/reminders/${id}/fired`),
   snooze: (id: string, until: string) =>
     req<{ ok: true }>('POST', `/reminders/${id}/snooze`, { until }),
@@ -304,8 +295,10 @@ export const api = {
   getRun: (id: string) => req<PlaybookRunWithSteps>('GET', `/playbook-runs/${id}`),
   startRun: (b: { playbook_id: string; title?: string }) =>
     req<PlaybookRun>('POST', '/playbook-runs', b),
-  updateRun: (id: string, b: { title?: string; notes?: string | null; completed_at?: string | null }) =>
-    req<PlaybookRun>('PATCH', `/playbook-runs/${id}`, b),
+  updateRun: (
+    id: string,
+    b: { title?: string; notes?: string | null; completed_at?: string | null }
+  ) => req<PlaybookRun>('PATCH', `/playbook-runs/${id}`, b),
   deleteRun: (id: string) => req<{ ok: true }>('DELETE', `/playbook-runs/${id}`),
   toggleRunStep: (id: string, b: { completed?: boolean; notes?: string | null }) =>
     req<PlaybookRunStep>('PATCH', `/run-steps/${id}`, b),
@@ -343,8 +336,7 @@ export const api = {
   closeHabitPeriods: () => req<{ ok: true; inserted: number }>('POST', '/habits/_close-periods'),
 
   // finance — categories
-  listExpenseCategories: () =>
-    req<ExpenseCategory[]>('GET', '/expense-categories'),
+  listExpenseCategories: () => req<ExpenseCategory[]>('GET', '/expense-categories'),
   createExpenseCategory: (b: {
     name: string;
     icon?: string | null;
@@ -355,8 +347,7 @@ export const api = {
   }) => req<ExpenseCategory>('POST', '/expense-categories', b),
   updateExpenseCategory: (id: string, b: Partial<ExpenseCategory>) =>
     req<ExpenseCategory>('PATCH', `/expense-categories/${id}`, b),
-  deleteExpenseCategory: (id: string) =>
-    req<{ ok: true }>('DELETE', `/expense-categories/${id}`),
+  deleteExpenseCategory: (id: string) => req<{ ok: true }>('DELETE', `/expense-categories/${id}`),
 
   // finance — transactions
   listTransactions: (
@@ -372,7 +363,9 @@ export const api = {
   ) => {
     const qs = new URLSearchParams(
       Object.fromEntries(
-        Object.entries(q).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])
+        Object.entries(q)
+          .filter(([, v]) => v !== undefined && v !== '')
+          .map(([k, v]) => [k, String(v)])
       )
     ).toString();
     return req<Transaction[]>('GET', `/transactions${qs ? `?${qs}` : ''}`);
@@ -389,18 +382,17 @@ export const api = {
   }) => req<Transaction>('POST', '/transactions', b),
   updateTransaction: (id: string, b: Partial<Transaction>) =>
     req<Transaction>('PATCH', `/transactions/${id}`, b),
-  deleteTransaction: (id: string) =>
-    req<{ ok: true }>('DELETE', `/transactions/${id}`),
+  deleteTransaction: (id: string) => req<{ ok: true }>('DELETE', `/transactions/${id}`),
   transactionSummary: (q: { from?: string; to?: string } = {}) => {
     const qs = new URLSearchParams(q as Record<string, string>).toString();
     return req<TransactionSummary>('GET', `/transactions/summary${qs ? `?${qs}` : ''}`);
   },
 
   // finance — recurring
-  listRecurringTransactions: () =>
-    req<RecurringTransaction[]>('GET', '/recurring-transactions'),
-  createRecurringTransaction: (b: Partial<RecurringTransaction> & { amount: number; description: string }) =>
-    req<RecurringTransaction>('POST', '/recurring-transactions', b),
+  listRecurringTransactions: () => req<RecurringTransaction[]>('GET', '/recurring-transactions'),
+  createRecurringTransaction: (
+    b: Partial<RecurringTransaction> & { amount: number; description: string }
+  ) => req<RecurringTransaction>('POST', '/recurring-transactions', b),
   updateRecurringTransaction: (id: string, b: Partial<RecurringTransaction>) =>
     req<RecurringTransaction>('PATCH', `/recurring-transactions/${id}`, b),
   deleteRecurringTransaction: (id: string) =>

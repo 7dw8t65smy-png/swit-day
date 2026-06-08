@@ -1,7 +1,7 @@
 import type { Project } from '@swit/shared';
 import type { AppSettings } from '../../lib/settings';
 import type { PatchFn } from './types';
-import { Section, Row, ToggleRow, NumberInput } from './ui';
+import { Section, Row, NumberInput } from './ui';
 
 export function WorkdayPane({
   s,
@@ -14,7 +14,10 @@ export function WorkdayPane({
 }): JSX.Element {
   return (
     <div className="space-y-5">
-      <Section title="Часы работы" hint="Используется в напоминаниях о начале/конце дня и в статистике.">
+      <Section
+        title="Часы работы"
+        hint="Используется в напоминаниях о начале/конце дня и в статистике."
+      >
         <Row label="Время начала">
           <input
             type="time"
@@ -29,33 +32,6 @@ export function WorkdayPane({
             value={s.day_end}
             onChange={(e) => patch('day_end', e.target.value)}
             className="input w-40"
-          />
-        </Row>
-        <ToggleRow
-          label="Авто-завершить день в указанное время"
-          hint="Если день ещё активен — будет автоматически закрыт с подведением итогов. Требует scheduler в main-процессе."
-          value={s.auto_end_day}
-          onChange={(v) => patch('auto_end_day', v)}
-        />
-      </Section>
-
-      <Section
-        title="Авто-пауза по простою"
-        hint="Когда нет активности мыши и клавиатуры — таймер сам уходит на паузу, а при первом касании клавиатуры или тачпада снова продолжает идти. Минуты простоя не засчитываются в работу."
-      >
-        <ToggleRow
-          label="Включить авто-паузу"
-          hint="Не трогает ручную паузу/перерыв и никогда не запускает день сам."
-          value={s.auto_pause_enabled}
-          onChange={(v) => patch('auto_pause_enabled', v)}
-        />
-        <Row label="Ставить на паузу после">
-          <NumberInput
-            value={s.auto_pause_idle_min}
-            onChange={(v) => patch('auto_pause_idle_min', v)}
-            min={1}
-            max={30}
-            suffix="мин простоя"
           />
         </Row>
       </Section>
@@ -117,7 +93,9 @@ export function WorkdayPane({
         <Row label="Приоритет">
           <select
             value={s.default_priority}
-            onChange={(e) => patch('default_priority', e.target.value as AppSettings['default_priority'])}
+            onChange={(e) =>
+              patch('default_priority', e.target.value as AppSettings['default_priority'])
+            }
             className="input w-40"
           >
             <option value="low">↓ Низкий</option>
@@ -129,7 +107,9 @@ export function WorkdayPane({
         <Row label="Сложность">
           <select
             value={s.default_difficulty}
-            onChange={(e) => patch('default_difficulty', e.target.value as AppSettings['default_difficulty'])}
+            onChange={(e) =>
+              patch('default_difficulty', e.target.value as AppSettings['default_difficulty'])
+            }
             className="input w-40"
           >
             <option value="easy">🟢 Лёгкая</option>

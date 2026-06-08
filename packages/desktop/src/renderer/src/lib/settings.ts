@@ -33,11 +33,6 @@ export interface AppSettings {
   default_priority: 'low' | 'normal' | 'high' | 'urgent';
   default_difficulty: 'easy' | 'medium' | 'hard';
   default_event_reminder_min: number;
-  auto_end_day: boolean;
-  /** Авто-пауза таймера при простое мыши/клавиатуры. */
-  auto_pause_enabled: boolean;
-  /** Порог простоя в минутах, после которого таймер уходит в авто-паузу. */
-  auto_pause_idle_min: number;
 
   // Notifications
   notify_enabled: boolean;
@@ -93,9 +88,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   default_priority: 'normal',
   default_difficulty: 'medium',
   default_event_reminder_min: 15,
-  auto_end_day: false,
-  auto_pause_enabled: true,
-  auto_pause_idle_min: 1,
   notify_enabled: true,
   notify_routines: true,
   notify_events: true,
@@ -108,8 +100,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   notify_quiet_start: '22:00',
   notify_quiet_end: '08:00',
   reminder_presets: JSON.stringify([
-    { name: 'Обычный',   offsets: [0] },
-    { name: 'Важный',    offsets: [60, 0] },
+    { name: 'Обычный', offsets: [0] },
+    { name: 'Важный', offsets: [60, 0] },
     { name: 'Критичный', offsets: [1440, 60, 15, 0] }
   ]),
   preset_event: 'Обычный',
@@ -147,25 +139,40 @@ function decode(raw: Record<string, string>): AppSettings {
     autostart: bool('autostart', DEFAULT_SETTINGS.autostart),
     minimize_to_tray: bool('minimize_to_tray', DEFAULT_SETTINGS.minimize_to_tray),
     show_tray_icon: bool('show_tray_icon', DEFAULT_SETTINGS.show_tray_icon),
-    theme: (get('theme', DEFAULT_SETTINGS.theme) as AppSettings['theme']),
+    theme: get('theme', DEFAULT_SETTINGS.theme) as AppSettings['theme'],
     accent_color: get('accent_color', DEFAULT_SETTINGS.accent_color),
     ui_density: get('ui_density', DEFAULT_SETTINGS.ui_density) as AppSettings['ui_density'],
     show_completed_tasks: bool('show_completed_tasks', DEFAULT_SETTINGS.show_completed_tasks),
-    week_starts_on: get('week_starts_on', DEFAULT_SETTINGS.week_starts_on) as AppSettings['week_starts_on'],
+    week_starts_on: get(
+      'week_starts_on',
+      DEFAULT_SETTINGS.week_starts_on
+    ) as AppSettings['week_starts_on'],
     currency: get('currency', DEFAULT_SETTINGS.currency) as AppSettings['currency'],
     day_start: get('day_start', DEFAULT_SETTINGS.day_start),
     day_end: get('day_end', DEFAULT_SETTINGS.day_end),
     pomodoro_work_min: num('pomodoro_work_min', DEFAULT_SETTINGS.pomodoro_work_min),
     pomodoro_break_min: num('pomodoro_break_min', DEFAULT_SETTINGS.pomodoro_break_min),
-    pomodoro_long_break_min: num('pomodoro_long_break_min', DEFAULT_SETTINGS.pomodoro_long_break_min),
-    pomodoro_sessions_before_long: num('pomodoro_sessions_before_long', DEFAULT_SETTINGS.pomodoro_sessions_before_long),
+    pomodoro_long_break_min: num(
+      'pomodoro_long_break_min',
+      DEFAULT_SETTINGS.pomodoro_long_break_min
+    ),
+    pomodoro_sessions_before_long: num(
+      'pomodoro_sessions_before_long',
+      DEFAULT_SETTINGS.pomodoro_sessions_before_long
+    ),
     default_project_id: get('default_project_id', DEFAULT_SETTINGS.default_project_id),
-    default_priority: get('default_priority', DEFAULT_SETTINGS.default_priority) as AppSettings['default_priority'],
-    default_difficulty: get('default_difficulty', DEFAULT_SETTINGS.default_difficulty) as AppSettings['default_difficulty'],
-    default_event_reminder_min: num('default_event_reminder_min', DEFAULT_SETTINGS.default_event_reminder_min),
-    auto_end_day: bool('auto_end_day', DEFAULT_SETTINGS.auto_end_day),
-    auto_pause_enabled: bool('auto_pause_enabled', DEFAULT_SETTINGS.auto_pause_enabled),
-    auto_pause_idle_min: num('auto_pause_idle_min', DEFAULT_SETTINGS.auto_pause_idle_min),
+    default_priority: get(
+      'default_priority',
+      DEFAULT_SETTINGS.default_priority
+    ) as AppSettings['default_priority'],
+    default_difficulty: get(
+      'default_difficulty',
+      DEFAULT_SETTINGS.default_difficulty
+    ) as AppSettings['default_difficulty'],
+    default_event_reminder_min: num(
+      'default_event_reminder_min',
+      DEFAULT_SETTINGS.default_event_reminder_min
+    ),
     notify_enabled: bool('notify_enabled', DEFAULT_SETTINGS.notify_enabled),
     notify_routines: bool('notify_routines', DEFAULT_SETTINGS.notify_routines),
     notify_events: bool('notify_events', DEFAULT_SETTINGS.notify_events),
@@ -222,8 +229,7 @@ function applyAccent(color: string): void {
   const isDark = root.classList.contains('dark');
   root.style.setProperty('--color-accent-light', isDark ? shade(color, -0.7) : shade(color, 0.9));
   root.style.setProperty('--color-accent-text', shade(color, -0.2));
-  // Sidebar timer-font color, work-bar fallback etc — keep `--color-work` in sync
-  // so DayTimer graphs reflect the new accent.
+  // Keep `--color-work` in sync so stats/journal charts reflect the new accent.
   root.style.setProperty('--color-work', color);
 }
 
@@ -302,8 +308,5 @@ export const useSettings = create<SettingsStore>((set, get) => ({
 
   save: async (): Promise<void> => {
     await api.setSettings(encode(get().settings));
-    // Просим main-процесс перечитать настройки авто-паузы сразу, чтобы
-    // изменения (вкл/выкл, порог простоя) применились без задержки опроса.
-    window.swit?.notifyAutoPauseSettingsChanged?.();
   }
 }));
