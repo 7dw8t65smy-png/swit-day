@@ -11,6 +11,8 @@ const Tasks = lazy(() => import('./pages/Tasks'));
 const Notes = lazy(() => import('./pages/Notes'));
 const Maps = lazy(() => import('./pages/Maps'));
 const MapEditor = lazy(() => import('./pages/MapEditor'));
+const Boards = lazy(() => import('./pages/Boards'));
+const BoardEditor = lazy(() => import('./pages/BoardEditor'));
 const Calendar = lazy(() => import('./pages/Calendar'));
 const Journal = lazy(() => import('./pages/Journal'));
 const Stats = lazy(() => import('./pages/Stats'));
@@ -152,6 +154,8 @@ export default function App() {
                 <Route path="/notes" element={<Notes />} />
                 <Route path="/maps" element={<Maps />} />
                 <Route path="/maps/:id" element={<MapEditor />} />
+                <Route path="/boards" element={<Boards />} />
+                <Route path="/boards/:id" element={<BoardEditor />} />
                 <Route path="/calendar" element={<Calendar />} />
                 <Route path="/projects" element={<Navigate to="/tasks" replace />} />
                 <Route path="/habits" element={<Habits />} />

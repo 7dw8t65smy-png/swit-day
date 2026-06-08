@@ -1,0 +1,230 @@
+/* Свободная доска: холст React Flow, элементы, левая панель и инспектор.
+   Опирается на токены приложения, работает в обеих темах. */
+
+.board-canvas {
+  position: absolute;
+  inset: 0;
+  background: var(--color-bg, var(--color-surface));
+}
+.board-canvas .react-flow__background {
+  color: var(--color-border);
+}
+
+/* --- Левая панель инструментов --- */
+.board-toolbar {
+  flex: none;
+  width: 76px;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.board-tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 4px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  color: var(--color-text);
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 120ms ease;
+}
+.board-tool:hover {
+  background: var(--color-surface-2);
+  border-color: var(--color-border);
+  transform: translateY(-1px);
+}
+.board-tool__label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--color-muted, #64748b);
+}
+
+/* --- Элементы доски --- */
+.board-el {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow: hidden;
+  transition:
+    box-shadow 140ms ease,
+    border-color 120ms ease;
+}
+.board-el--sticker {
+  border-radius: 6px;
+  box-shadow: 0 6px 16px -10px rgba(15, 23, 42, 0.55);
+}
+.board-el--card {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+.board-el--text {
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 6px 8px;
+}
+.board-el__text {
+  width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: center;
+}
+.board-el--text .board-el__text {
+  text-align: left;
+}
+.board-el__input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  resize: none;
+}
+
+/* NodeResizer */
+.board-resize-line {
+  border-color: var(--color-accent, #2563eb) !important;
+}
+.board-resize-handle {
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 2px !important;
+  background: var(--color-surface) !important;
+  border: 1.5px solid var(--color-accent, #2563eb) !important;
+}
+
+/* Контролы / минимапа под стиль приложения */
+.board-canvas .react-flow__controls,
+.board-canvas .react-flow__minimap {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px -16px rgba(15, 23, 42, 0.5);
+  border: 1px solid var(--color-border);
+}
+.board-canvas .react-flow__controls-button {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+.board-canvas .react-flow__controls-button:hover {
+  background: var(--color-surface-2);
+}
+
+/* --- Инспектор --- */
+.board-inspector {
+  width: 280px;
+  flex: none;
+  height: 100%;
+  overflow-y: auto;
+  border-left: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding: 14px 14px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.board-inspector__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.board-inspector__close {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--color-muted, #64748b);
+}
+.board-inspector__close:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+.board-inspector__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.board-inspector__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-muted, #64748b);
+}
+
+.board-swatches {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 7px;
+}
+.board-swatch {
+  height: 26px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+  transition: transform 120ms ease;
+}
+.board-swatch:hover {
+  transform: scale(1.08);
+}
+.board-swatch--on {
+  border-color: var(--color-text);
+}
+.board-swatch--reset {
+  display: grid;
+  place-items: center;
+  background: var(--color-surface-2);
+  color: var(--color-muted, #64748b);
+}
+
+.board-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.board-step {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+.board-step:hover {
+  background: var(--color-surface-2);
+}
+.board-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--color-border);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+.board-btn:hover {
+  background: var(--color-surface-2);
+}

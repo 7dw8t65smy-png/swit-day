@@ -1,4 +1,5 @@
 import type {
+  Board,
   CalendarEvent,
   DayTotals,
   ExpenseCategory,
@@ -183,6 +184,15 @@ export const api = {
     req<MindMap>('PUT', `/maps/${id}`, b),
   deleteMap: (id: string) => req<{ ok: true }>('DELETE', `/maps/${id}`),
   duplicateMap: (id: string) => req<MindMap>('POST', `/maps/${id}/duplicate`),
+
+  // boards (свободная доска)
+  listBoards: () => req<Board[]>('GET', '/boards'),
+  getBoard: (id: string) => req<Board>('GET', `/boards/${id}`),
+  createBoard: (b: { title: string; content: string }) => req<Board>('POST', '/boards', b),
+  updateBoard: (id: string, b: Partial<{ title: string; content: string }>) =>
+    req<Board>('PUT', `/boards/${id}`, b),
+  deleteBoard: (id: string) => req<{ ok: true }>('DELETE', `/boards/${id}`),
+  duplicateBoard: (id: string) => req<Board>('POST', `/boards/${id}/duplicate`),
 
   // sessions
   startSession: (type: 'work' | 'break' | 'pause', task_id?: string | null) =>

@@ -387,3 +387,59 @@ export interface MindMap {
   created_at: string;
   updated_at: string;
 }
+
+// --- Свободная доска (Board) ---
+// Отдельный тип документа: элементы с произвольными координатами и размерами,
+// без авто-раскладки дерева. Хранится в таблице boards (content — JSON BoardDoc).
+
+export type BoardElementType =
+  | 'sticker'
+  | 'text'
+  | 'card'
+  | 'shape'
+  | 'connector'
+  | 'frame'
+  | 'image'
+  | 'draw';
+
+export type BoardShapeKind = 'rect' | 'ellipse' | 'diamond';
+
+export interface BoardElementStyle {
+  /** Фон элемента (hex) или null — прозрачный. */
+  fill?: string | null;
+  /** Цвет текста. */
+  color?: string | null;
+  /** Цвет рамки. */
+  border?: string | null;
+  /** Размер шрифта в px. */
+  fontSize?: number | null;
+  /** Геометрия фигуры (для type === 'shape'). */
+  shape?: BoardShapeKind | null;
+}
+
+export interface BoardElement {
+  id: string;
+  type: BoardElementType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Порядок наложения (выше — поверх). */
+  zIndex: number;
+  text?: string | null;
+  style?: BoardElementStyle;
+}
+
+/** Документ свободной доски целиком (сериализуется в boards.content). */
+export interface BoardDoc {
+  elements: BoardElement[];
+}
+
+/** Строка таблицы boards (content — сериализованный BoardDoc). */
+export interface Board {
+  id: string;
+  title: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}

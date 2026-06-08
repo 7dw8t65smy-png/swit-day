@@ -293,4 +293,16 @@ CREATE TABLE IF NOT EXISTS mind_maps (
 );
 
 CREATE INDEX IF NOT EXISTS idx_mind_maps_updated ON mind_maps(updated_at);
+
+-- Свободные доски (whiteboard). Документ (элементы, координаты, размеры, стили)
+-- хранится одним JSON в content. Независимы от интеллект-карт.
+CREATE TABLE IF NOT EXISTS boards (
+  id           TEXT PRIMARY KEY,
+  title        TEXT NOT NULL,
+  content      TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_boards_updated ON boards(updated_at);
 `;
