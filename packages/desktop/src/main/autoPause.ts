@@ -1,5 +1,6 @@
 import { powerMonitor, type BrowserWindow } from 'electron';
 import type { WorkSession } from '@swit/shared';
+import { decideAutoPause, parseAutoPauseSettings } from './autoPauseLogic.js';
 
 // Авто-пауза таймера по простою системы.
 //
@@ -49,10 +50,9 @@ function notifyRenderer(): void {
 async function refreshSettings(): Promise<void> {
   try {
     const s = await api<Record<string, string>>('GET', '/settings');
-    const en = s.auto_pause_enabled;
-    enabled = en === undefined ? true : en === '1' || en === 'true';
-    const min = Number(s.auto_pause_idle_min);
-    idleThresholdSec = Number.isFinite(min) && min >= 1 ? Math.round(min * 60) : 60;
+    const parsed = parseAutoPauseSettings(s);
+    enabled = parsed.enabled;
+    idleThresholdSec = parsed.idleThresholdSec;
   } catch {
     /* сервер ещё поднимается — оставляем прежние значения */
   }
@@ -81,15 +81,26 @@ async function tick(): Promise<void> {
     return; // сервер недоступен — попробуем на следующем тике
   }
 
-  if (autoPaused) {
-    // Сверяем, что активна именно наша пауза. Если пользователь вмешался —
-    // отпускаем и больше не возобновляем автоматически.
-    if (!active || active.id !== autoPauseSessionId || active.type !== 'pause') {
+  const action = decideAutoPause({
+    idleSec: idle,
+    idleThresholdSec,
+    active,
+    autoPaused,
+    autoPauseSessionId,
+    nowMs: Date.now()
+  });
+
+  switch (action.kind) {
+    case 'none':
+      return;
+
+    case 'release':
+      // Пользователь сам сменил состояние — отпускаем и не трогаем дальше.
       releaseControl();
       return;
-    }
-    // Появилась активность — возвращаемся к работе.
-    if (idle < idleThresholdSec) {
+
+    case 'resume':
+      // Появилась активность — возвращаемся к работе.
       try {
         await api('POST', '/sessions/start', { type: 'work' });
         releaseControl();
@@ -97,27 +108,25 @@ async function tick(): Promise<void> {
       } catch {
         /* не вышло — повторим на следующем тике */
       }
-    }
-    return;
-  }
+      return;
 
-  // Не на авто-паузе: ставим на паузу идущую работу при достижении порога простоя.
-  if (active && active.type === 'work' && idle >= idleThresholdSec) {
-    const idleStartMs = Date.now() - idle * 1000;
-    const activeStartMs = new Date(active.started_at).getTime();
-    const at = new Date(Math.max(idleStartMs, activeStartMs)).toISOString();
-    try {
-      const paused = await api<WorkSession>('POST', '/sessions/start', {
-        type: 'pause',
-        at,
-        notes: 'auto'
-      });
-      autoPaused = true;
-      autoPauseSessionId = paused.id;
-      notifyRenderer();
-    } catch {
-      /* повторим на следующем тике */
-    }
+    case 'pause':
+      // Простой достиг порога: закрываем работу там, где активность прекратилась
+      // (prev_ended_at), а саму паузу стартуем «сейчас» — её таймер пойдёт с 0:00.
+      // Минута простоя-порога между ними остаётся неучтённым промежутком.
+      try {
+        const paused = await api<WorkSession>('POST', '/sessions/start', {
+          type: 'pause',
+          prev_ended_at: action.endWorkAt,
+          notes: 'auto'
+        });
+        autoPaused = true;
+        autoPauseSessionId = paused.id;
+        notifyRenderer();
+      } catch {
+        /* повторим на следующем тике */
+      }
+      return;
   }
 }
 
