@@ -46,6 +46,25 @@
   color: var(--color-muted, #64748b);
 }
 
+/* Плавающая палитра поверх холста (как в XMind/Miro): не отъедает колонку,
+   полотну остаётся вся ширина. z-index 16 — выше слоя рисования (15). */
+.board-toolbar--float {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 16;
+  width: 72px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+  box-shadow: 0 16px 36px -18px rgba(15, 23, 42, 0.55);
+  padding: 8px 7px;
+  gap: 4px;
+  max-height: calc(100% - 32px);
+  overflow-y: auto;
+}
+
 /* --- Элементы доски --- */
 .board-el {
   width: 100%;

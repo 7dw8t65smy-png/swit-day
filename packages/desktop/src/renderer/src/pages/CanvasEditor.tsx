@@ -241,7 +241,7 @@ export default function CanvasEditor(): JSX.Element {
 
   const [snap, setSnap] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);
-  const [outlineOpen, setOutlineOpen] = useState(true);
+  const [outlineOpen, setOutlineOpen] = useState(false);
   const [zenMode, setZenMode] = useState(false);
   const [mode, setMode] = useState<Mode>('select');
   const [pendingFrom, setPendingFrom] = useState<string | null>(null);
@@ -712,57 +712,57 @@ export default function CanvasEditor(): JSX.Element {
           />
         )}
 
-        {!zenMode && (
-          <div className="board-toolbar">
-            {BOARD_TOOLS.map(({ type, label, icon: Icon }) => (
-              <button
-                key={type}
-                className="board-tool"
-                title={`Добавить: ${label}`}
-                onClick={() => addBoardAtCenter(type)}
-              >
-                <Icon size={18} />
-                <span className="board-tool__label">{label}</span>
-              </button>
-            ))}
-            <button
-              className="board-tool"
-              title="Картинка"
-              onClick={() => fileRef.current?.click()}
-            >
-              <ImageIcon size={18} />
-              <span className="board-tool__label">Картинка</span>
-            </button>
-            <button
-              className={['board-tool', mode === 'connect' ? 'board-tool--on' : ''].join(' ')}
-              title="Соединить два элемента доски"
-              onClick={() => {
-                setMode((mo) => (mo === 'connect' ? 'select' : 'connect'));
-                setPendingFrom(null);
-              }}
-            >
-              <Spline size={18} />
-              <span className="board-tool__label">Связь</span>
-            </button>
-            <button
-              className={['board-tool', mode === 'draw' ? 'board-tool--on' : ''].join(' ')}
-              title="Свободное рисование"
-              onClick={() => setMode((mo) => (mo === 'draw' ? 'select' : 'draw'))}
-            >
-              <Pencil size={18} />
-              <span className="board-tool__label">Перо</span>
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={onFile}
-            />
-          </div>
-        )}
-
         <div ref={wrapRef} className="relative flex-1 min-w-0">
+          {!zenMode && (
+            <div className="board-toolbar board-toolbar--float">
+              {BOARD_TOOLS.map(({ type, label, icon: Icon }) => (
+                <button
+                  key={type}
+                  className="board-tool"
+                  title={`Добавить: ${label}`}
+                  onClick={() => addBoardAtCenter(type)}
+                >
+                  <Icon size={18} />
+                  <span className="board-tool__label">{label}</span>
+                </button>
+              ))}
+              <button
+                className="board-tool"
+                title="Картинка"
+                onClick={() => fileRef.current?.click()}
+              >
+                <ImageIcon size={18} />
+                <span className="board-tool__label">Картинка</span>
+              </button>
+              <button
+                className={['board-tool', mode === 'connect' ? 'board-tool--on' : ''].join(' ')}
+                title="Соединить два элемента доски"
+                onClick={() => {
+                  setMode((mo) => (mo === 'connect' ? 'select' : 'connect'));
+                  setPendingFrom(null);
+                }}
+              >
+                <Spline size={18} />
+                <span className="board-tool__label">Связь</span>
+              </button>
+              <button
+                className={['board-tool', mode === 'draw' ? 'board-tool--on' : ''].join(' ')}
+                title="Свободное рисование"
+                onClick={() => setMode((mo) => (mo === 'draw' ? 'select' : 'draw'))}
+              >
+                <Pencil size={18} />
+                <span className="board-tool__label">Перо</span>
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={onFile}
+              />
+            </div>
+          )}
+
           {loading || (!mindDoc && !boardDoc) ? (
             <div className="absolute inset-0 grid place-items-center text-muted">
               <Loader2 className="animate-spin" />
