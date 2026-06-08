@@ -83,14 +83,12 @@ export default function Calendar() {
   }
 
   async function scheduleTask(taskId: string, date: string, startTime: string) {
-    const updated = await api.updateTask(taskId, { due_date: date, due_time: startTime });
-    void syncTaskDeadline(updated);
+    await api.updateTask(taskId, { due_date: date, due_time: startTime });
     await reload();
   }
 
   async function unscheduleTask(taskId: string) {
-    const updated = await api.updateTask(taskId, { due_time: null });
-    void syncTaskDeadline(updated);
+    await api.updateTask(taskId, { due_time: null });
     await reload();
   }
 
