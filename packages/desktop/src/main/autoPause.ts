@@ -141,6 +141,14 @@ export function initAutoPause(opts: {
   timer = setInterval(() => void tick(), POLL_MS);
 }
 
+// Принудительно перечитать настройки авто-паузы. Вызывается из main по IPC,
+// когда пользователь меняет настройки в UI — чтобы изменение применилось
+// мгновенно, а не на очередном цикле опроса (~30 c).
+export function refreshAutoPauseSettings(): void {
+  if (!serverUrl) return;
+  void refreshSettings();
+}
+
 export function destroyAutoPause(): void {
   if (timer) clearInterval(timer);
   timer = null;

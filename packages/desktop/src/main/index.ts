@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { initTray, destroyTray } from './tray.js';
 import { initReminders, destroyReminders } from './reminders.js';
-import { initAutoPause, destroyAutoPause } from './autoPause.js';
+import { initAutoPause, destroyAutoPause, refreshAutoPauseSettings } from './autoPause.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -182,6 +182,12 @@ ipcMain.handle('app:open-data-folder', async () => {
 
 ipcMain.handle('notification:show', async (_e, payload: { title: string; body?: string }) => {
   await showAppNotification(payload.title, payload.body);
+});
+
+// Рендерер сохранил настройки — просим авто-паузу перечитать их немедленно,
+// чтобы изменения (вкл/выкл, порог простоя) применились без задержки опроса.
+ipcMain.handle('autopause:settings-changed', () => {
+  refreshAutoPauseSettings();
 });
 
 app.whenReady().then(async () => {

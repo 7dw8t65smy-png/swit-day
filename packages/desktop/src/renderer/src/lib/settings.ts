@@ -302,5 +302,8 @@ export const useSettings = create<SettingsStore>((set, get) => ({
 
   save: async (): Promise<void> => {
     await api.setSettings(encode(get().settings));
+    // Просим main-процесс перечитать настройки авто-паузы сразу, чтобы
+    // изменения (вкл/выкл, порог простоя) применились без задержки опроса.
+    window.swit?.notifyAutoPauseSettingsChanged?.();
   }
 }));

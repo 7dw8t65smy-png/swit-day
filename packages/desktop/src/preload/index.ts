@@ -5,6 +5,8 @@ const api = {
   openDataFolder: (): Promise<string> => ipcRenderer.invoke('app:open-data-folder'),
   showNotification: (title: string, body?: string): Promise<void> =>
     ipcRenderer.invoke('notification:show', { title, body }),
+  notifyAutoPauseSettingsChanged: (): Promise<void> =>
+    ipcRenderer.invoke('autopause:settings-changed'),
   onTimerChanged: (cb: () => void): (() => void) => {
     const handler = () => cb();
     ipcRenderer.on('timer:changed', handler);
