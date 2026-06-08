@@ -34,6 +34,10 @@ export interface AppSettings {
   default_difficulty: 'easy' | 'medium' | 'hard';
   default_event_reminder_min: number;
   auto_end_day: boolean;
+  /** Авто-пауза таймера при простое мыши/клавиатуры. */
+  auto_pause_enabled: boolean;
+  /** Порог простоя в минутах, после которого таймер уходит в авто-паузу. */
+  auto_pause_idle_min: number;
 
   // Notifications
   notify_enabled: boolean;
@@ -90,6 +94,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   default_difficulty: 'medium',
   default_event_reminder_min: 15,
   auto_end_day: false,
+  auto_pause_enabled: true,
+  auto_pause_idle_min: 1,
   notify_enabled: true,
   notify_routines: true,
   notify_events: true,
@@ -158,6 +164,8 @@ function decode(raw: Record<string, string>): AppSettings {
     default_difficulty: get('default_difficulty', DEFAULT_SETTINGS.default_difficulty) as AppSettings['default_difficulty'],
     default_event_reminder_min: num('default_event_reminder_min', DEFAULT_SETTINGS.default_event_reminder_min),
     auto_end_day: bool('auto_end_day', DEFAULT_SETTINGS.auto_end_day),
+    auto_pause_enabled: bool('auto_pause_enabled', DEFAULT_SETTINGS.auto_pause_enabled),
+    auto_pause_idle_min: num('auto_pause_idle_min', DEFAULT_SETTINGS.auto_pause_idle_min),
     notify_enabled: bool('notify_enabled', DEFAULT_SETTINGS.notify_enabled),
     notify_routines: bool('notify_routines', DEFAULT_SETTINGS.notify_routines),
     notify_events: bool('notify_events', DEFAULT_SETTINGS.notify_events),

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { initTray, destroyTray } from './tray.js';
 import { initReminders, destroyReminders } from './reminders.js';
+import { initAutoPause, destroyAutoPause } from './autoPause.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -188,6 +189,7 @@ app.whenReady().then(async () => {
   createWindow();
   initTray({ serverUrl: SERVER_URL, getMainWindow: () => mainWindow });
   initReminders({ serverUrl: SERVER_URL });
+  initAutoPause({ serverUrl: SERVER_URL, getMainWindow: () => mainWindow });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -209,6 +211,7 @@ app.on('before-quit', (event) => {
   if (isQuitting) return;
   destroyTray();
   destroyReminders();
+  destroyAutoPause();
 
   if (!serverInstance) return;
 

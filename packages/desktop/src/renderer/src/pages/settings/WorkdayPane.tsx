@@ -39,6 +39,27 @@ export function WorkdayPane({
         />
       </Section>
 
+      <Section
+        title="Авто-пауза по простою"
+        hint="Когда нет активности мыши и клавиатуры — таймер сам уходит на паузу, а при первом касании клавиатуры или тачпада снова продолжает идти. Минуты простоя не засчитываются в работу."
+      >
+        <ToggleRow
+          label="Включить авто-паузу"
+          hint="Не трогает ручную паузу/перерыв и никогда не запускает день сам."
+          value={s.auto_pause_enabled}
+          onChange={(v) => patch('auto_pause_enabled', v)}
+        />
+        <Row label="Ставить на паузу после">
+          <NumberInput
+            value={s.auto_pause_idle_min}
+            onChange={(v) => patch('auto_pause_idle_min', v)}
+            min={1}
+            max={30}
+            suffix="мин простоя"
+          />
+        </Row>
+      </Section>
+
       <Section title="Pomodoro" hint="Длительности фокус-сессий и перерывов в минутах.">
         <Row label="Сессия фокуса">
           <NumberInput

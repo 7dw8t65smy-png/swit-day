@@ -3,6 +3,15 @@ import { nanoid } from 'nanoid';
 import { db, nowIso, today } from '../db.js';
 import type { SessionType, TaskTimeLog, WorkSession } from '@swit/shared';
 
+// Нормализует опциональную метку времени для бэкдейта (авто-пауза по простою).
+// Возвращает ISO не позже «сейчас», либо null если не задано/некорректно.
+function normalizeAt(at: string | null | undefined): string | null {
+  if (!at) return null;
+  const ms = new Date(at).getTime();
+  if (!Number.isFinite(ms)) return null;
+  return new Date(Math.min(ms, Date.now())).toISOString();
+}
+
 export function registerSessions(app: FastifyInstance): void {
   // work_sessions
   app.get<{ Querystring: { date?: string } }>('/sessions', (req) => {
@@ -12,19 +21,23 @@ export function registerSessions(app: FastifyInstance): void {
       .all(date) as WorkSession[];
   });
 
-  app.post<{ Body: { type: SessionType; task_id?: string | null; notes?: string | null } }>(
-    '/sessions/start',
-    (req) => {
-      // close any open sessions first
-      db.prepare(`UPDATE work_sessions SET ended_at = ? WHERE ended_at IS NULL`).run(nowIso());
-      const id = nanoid();
-      const t = nowIso();
-      db.prepare(
-        `INSERT INTO work_sessions (id, date, started_at, type, task_id, notes) VALUES (?, ?, ?, ?, ?, ?)`
-      ).run(id, today(), t, req.body.type, req.body.task_id ?? null, req.body.notes ?? null);
-      return db.prepare('SELECT * FROM work_sessions WHERE id = ?').get(id) as WorkSession;
-    }
-  );
+  app.post<{
+    Body: { type: SessionType; task_id?: string | null; notes?: string | null; at?: string | null };
+  }>('/sessions/start', (req) => {
+    // `at` позволяет бэкдейтить переход (авто-пауза по простою: работа должна
+    // закончиться в момент, когда пользователь перестал что-либо делать).
+    const t = normalizeAt(req.body.at) ?? nowIso();
+    // Закрываем открытые сессии в момент `t`, но не раньше их начала
+    // (MAX по ISO-строкам = хронологический максимум).
+    db.prepare(
+      `UPDATE work_sessions SET ended_at = MAX(?, started_at) WHERE ended_at IS NULL`
+    ).run(t);
+    const id = nanoid();
+    db.prepare(
+      `INSERT INTO work_sessions (id, date, started_at, type, task_id, notes) VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(id, today(), t, req.body.type, req.body.task_id ?? null, req.body.notes ?? null);
+    return db.prepare('SELECT * FROM work_sessions WHERE id = ?').get(id) as WorkSession;
+  });
 
   app.post('/sessions/stop', () => {
     const t = nowIso();
