@@ -65,7 +65,9 @@ export function normalizeMindMapDoc(value: unknown, fallbackRootId = 'root'): Mi
       tags: Array.isArray(n.tags)
         ? n.tags.filter((t): t is string => typeof t === 'string')
         : undefined,
-      collapsed: !!n.collapsed
+      collapsed: !!n.collapsed,
+      fx: typeof n.fx === 'number' && Number.isFinite(n.fx) ? n.fx : null,
+      fy: typeof n.fy === 'number' && Number.isFinite(n.fy) ? n.fy : null
     });
   }
 
@@ -257,7 +259,9 @@ export function moveNode(doc: MindMapDoc, id: string, newParentId: string): Mind
   return replaceNodes(
     doc,
     doc.nodes.map((n) => {
-      if (n.id === id) return { ...n, parentId: newParentId };
+      // Бросок на другой узел = переподчинение: ручную позицию снимаем, узел
+      // возвращается в авто-раскладку под новым родителем.
+      if (n.id === id) return { ...n, parentId: newParentId, fx: null, fy: null };
       if (n.id === newParentId && n.collapsed) return { ...n, collapsed: false };
       return n;
     })
@@ -278,7 +282,7 @@ export function promoteNode(doc: MindMapDoc, id: string): MindMapDoc {
   const parentIndex = doc.nodes.findIndex((n) => n.id === parent.id);
   if (nodeIndex < 0 || parentIndex < 0) return doc;
 
-  const promoted = { ...node, parentId: grandParentId };
+  const promoted = { ...node, parentId: grandParentId, fx: null, fy: null };
   const without = doc.nodes.filter((n) => n.id !== id);
   const insertAfterParent = without.findIndex((n) => n.id === parent.id) + 1;
   const nodes = [

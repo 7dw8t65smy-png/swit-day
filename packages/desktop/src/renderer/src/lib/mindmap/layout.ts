@@ -57,5 +57,34 @@ export function layoutMap(doc: MindMapDoc): Record<string, NodePos> {
   };
 
   place(doc.rootId, 0);
+
+  // Ручные позиции (fx/fy): узел встаёт в заданную точку, а его поддерево
+  // сдвигается вместе с ним. Обходим дерево от корня, накапливая смещение,
+  // чтобы вложенные ручные позиции корректно перекрывали унаследованное.
+  const byId = new Map(visibleList.map((n) => [n.id, n]));
+  const applyManual = (id: string, ox: number, oy: number): void => {
+    const auto = pos[id];
+    if (!auto) return;
+    const node = byId.get(id);
+    let x: number;
+    let y: number;
+    let nextOx: number;
+    let nextOy: number;
+    if (node && typeof node.fx === 'number' && typeof node.fy === 'number') {
+      x = node.fx;
+      y = node.fy;
+      nextOx = node.fx - auto.x;
+      nextOy = node.fy - auto.y;
+    } else {
+      x = auto.x + ox;
+      y = auto.y + oy;
+      nextOx = ox;
+      nextOy = oy;
+    }
+    pos[id] = { x, y };
+    for (const child of childrenOf(id)) applyManual(child, nextOx, nextOy);
+  };
+  applyManual(doc.rootId, 0, 0);
+
   return pos;
 }

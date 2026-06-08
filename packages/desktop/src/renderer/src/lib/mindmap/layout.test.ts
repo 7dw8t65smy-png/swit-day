@@ -74,3 +74,39 @@ describe('layoutMap', () => {
     expect(pos.a.y).toBeGreaterThan(0);
   });
 });
+
+describe('layoutMap — ручные позиции (fx/fy)', () => {
+  it('узел с fx/fy встаёт в заданную точку', () => {
+    const pos = layoutMap(
+      doc('right', [
+        { id: 'root', parentId: null, text: 'R' },
+        { id: 'a', parentId: 'root', text: 'A', fx: 500, fy: 200 }
+      ])
+    );
+    expect(pos.a).toEqual({ x: 500, y: 200 });
+  });
+
+  it('поддерево сдвигается вместе с вручную перемещённым узлом', () => {
+    // авто: a=(LEVEL_GAP,0), a1=(2*LEVEL_GAP,0). Двигаем a в (0,300) →
+    // дельта (-LEVEL_GAP,300) применяется и к потомку a1.
+    const pos = layoutMap(
+      doc('right', [
+        { id: 'root', parentId: null, text: 'R' },
+        { id: 'a', parentId: 'root', text: 'A', fx: 0, fy: 300 },
+        { id: 'a1', parentId: 'a', text: 'A1' }
+      ])
+    );
+    expect(pos.a).toEqual({ x: 0, y: 300 });
+    expect(pos.a1).toEqual({ x: LEVEL_GAP, y: 300 });
+  });
+
+  it('без ручных позиций авто-раскладка не смещается', () => {
+    const pos = layoutMap(
+      doc('right', [
+        { id: 'root', parentId: null, text: 'R' },
+        { id: 'a', parentId: 'root', text: 'A' }
+      ])
+    );
+    expect(pos.a).toEqual({ x: LEVEL_GAP, y: 0 });
+  });
+});

@@ -47,7 +47,8 @@ import {
   Focus,
   CheckCircle2,
   Flag,
-  Sparkle
+  Sparkle,
+  RotateCcw
 } from 'lucide-react';
 import type {
   BoardElementType,
@@ -337,6 +338,14 @@ export default function CanvasEditor(): JSX.Element {
         const target = findDropTarget(mdoc, n.id, point);
         if (target) {
           useMindMap.getState().moveNode(n.id, target);
+          changed = true;
+        } else {
+          // Бросок в пустоту = свободное размещение: узел остаётся, куда
+          // отпустили (ветки-потомки сдвигаются вместе с ним).
+          useMindMap.getState().patchNode(n.id, {
+            fx: Math.round(point.x),
+            fy: Math.round(point.y)
+          });
           changed = true;
         }
       } else {
@@ -1014,6 +1023,15 @@ function MindQuickBar({ node, onFocus }: { node: MindMapNode; onFocus: () => voi
           {emoji}
         </button>
       ))}
+      {(typeof node.fx === 'number' || typeof node.fy === 'number') && (
+        <button
+          title="Вернуть в авто-раскладку"
+          className="canvas-quickbar__btn"
+          onClick={() => set.patchNode(node.id, { fx: null, fy: null })}
+        >
+          <RotateCcw size={14} />
+        </button>
+      )}
       <button title="Фокус" className="canvas-quickbar__btn" onClick={onFocus}>
         <Focus size={14} />
       </button>

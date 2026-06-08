@@ -89,6 +89,24 @@ describe('normalizeMindMapDoc', () => {
 
     expect(doc.layout).toBe('right');
   });
+
+  it('сохраняет числовые fx/fy, невалидные превращает в null', () => {
+    const doc = normalizeMindMapDoc({
+      rootId: 'root',
+      layout: 'right',
+      nodes: [
+        { id: 'root', parentId: null, text: 'R' },
+        { id: 'a', parentId: 'root', text: 'A', fx: 120, fy: -40 },
+        { id: 'b', parentId: 'root', text: 'B', fx: 'x', fy: NaN }
+      ]
+    });
+    const a = doc.nodes.find((n) => n.id === 'a');
+    const b = doc.nodes.find((n) => n.id === 'b');
+    expect(a?.fx).toBe(120);
+    expect(a?.fy).toBe(-40);
+    expect(b?.fx).toBeNull();
+    expect(b?.fy).toBeNull();
+  });
 });
 
 describe('навигация по дереву', () => {
@@ -180,6 +198,14 @@ describe('moveNode', () => {
   it('корень не двигается', () => {
     const next = moveNode(tree(), 'root', 'a');
     expect(next.nodes.find((n) => n.id === 'root')?.parentId).toBeNull();
+  });
+  it('сбрасывает ручную позицию (fx/fy) при переподчинении', () => {
+    const placed = updateNode(tree(), 'a1', { fx: 200, fy: 50 });
+    const next = moveNode(placed, 'a1', 'b');
+    const a1 = next.nodes.find((n) => n.id === 'a1');
+    expect(a1?.parentId).toBe('b');
+    expect(a1?.fx).toBeNull();
+    expect(a1?.fy).toBeNull();
   });
 });
 
