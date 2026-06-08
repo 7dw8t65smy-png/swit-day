@@ -318,7 +318,21 @@ export default function CanvasEditor(): JSX.Element {
     for (const n of dragged) {
       if (mindIds.has(n.id)) {
         const mdoc = useMindMap.getState().doc;
-        if (!mdoc || n.id === mdoc.rootId) continue;
+        if (!mdoc) continue;
+        // Перетаскивание центрального узла двигает всю карту целиком (сдвиг origin):
+        // ветки сохраняют относительную раскладку — как центральная тема в XMind.
+        if (n.id === mdoc.rootId) {
+          const posRoot = layoutMap(mdoc)[mdoc.rootId];
+          if (posRoot) {
+            const nx = Math.round(n.position.x - posRoot.x);
+            const ny = Math.round(n.position.y - posRoot.y);
+            if (nx !== originX || ny !== originY) {
+              useCanvasMeta.getState().setOrigin(nx, ny);
+              changed = true;
+            }
+          }
+          continue;
+        }
         const point = { x: n.position.x - originX, y: n.position.y - originY };
         const target = findDropTarget(mdoc, n.id, point);
         if (target) {
