@@ -150,7 +150,10 @@ export default function MapEditor(): JSX.Element {
   const rootSelected = !!doc && selectedId === doc.rootId;
 
   return (
-    <div className="flex flex-col h-full">
+    // h-screen (а не h-full): родитель страницы — min-h-full, поэтому height:100%
+    // схлопывается в auto и холст React Flow получает 0px высоты. main = 100vh,
+    // так что h-screen заполняет область ровно и холст получает реальную высоту.
+    <div className="flex flex-col h-screen">
       {/* Тулбар */}
       <header className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-surface/80 backdrop-blur z-10">
         <button
