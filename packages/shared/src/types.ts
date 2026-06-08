@@ -453,3 +453,22 @@ export interface Board {
   created_at: string;
   updated_at: string;
 }
+
+// --- Единый холст (Canvas): карта-дерево + свободная доска вместе ---
+// Один документ держит и интеллект-карту, и свободные элементы; они рисуются
+// на одном бесконечном полотне. origin — где корень карты стоит на полотне.
+
+export interface CanvasDoc {
+  mindmap: MindMapDoc;
+  board: BoardDoc;
+  origin: { x: number; y: number };
+}
+
+/** Строка таблицы canvases (content — сериализованный CanvasDoc). */
+export interface Canvas {
+  id: string;
+  title: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}

@@ -305,4 +305,15 @@ CREATE TABLE IF NOT EXISTS boards (
 );
 
 CREATE INDEX IF NOT EXISTS idx_boards_updated ON boards(updated_at);
+
+-- Единый холст: карта-дерево + свободная доска в одном документе (JSON CanvasDoc).
+CREATE TABLE IF NOT EXISTS canvases (
+  id           TEXT PRIMARY KEY,
+  title        TEXT NOT NULL,
+  content      TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_canvases_updated ON canvases(updated_at);
 `;

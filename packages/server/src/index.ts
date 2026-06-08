@@ -16,6 +16,7 @@ import { registerFinance } from './routes/finance.js';
 import { registerData } from './routes/data.js';
 import { registerMaps } from './routes/maps.js';
 import { registerBoards } from './routes/boards.js';
+import { registerCanvases } from './routes/canvases.js';
 import { backupOnStartup } from './backup.js';
 
 function isAllowedOrigin(origin: string | undefined): boolean {
@@ -72,6 +73,7 @@ export async function startSwitServer(opts?: {
   registerData(app);
   registerMaps(app);
   registerBoards(app);
+  registerCanvases(app);
 
   // Раз в сутки снимаем копию БД до начала активной работы.
   await backupOnStartup();

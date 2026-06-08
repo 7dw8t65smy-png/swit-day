@@ -1,5 +1,6 @@
 import type {
   Board,
+  Canvas,
   CalendarEvent,
   DayTotals,
   ExpenseCategory,
@@ -193,6 +194,15 @@ export const api = {
     req<Board>('PUT', `/boards/${id}`, b),
   deleteBoard: (id: string) => req<{ ok: true }>('DELETE', `/boards/${id}`),
   duplicateBoard: (id: string) => req<Board>('POST', `/boards/${id}/duplicate`),
+
+  // canvases (единый холст: карта + доска)
+  listCanvases: () => req<Canvas[]>('GET', '/canvases'),
+  getCanvas: (id: string) => req<Canvas>('GET', `/canvases/${id}`),
+  createCanvas: (b: { title: string; content: string }) => req<Canvas>('POST', '/canvases', b),
+  updateCanvas: (id: string, b: Partial<{ title: string; content: string }>) =>
+    req<Canvas>('PUT', `/canvases/${id}`, b),
+  deleteCanvas: (id: string) => req<{ ok: true }>('DELETE', `/canvases/${id}`),
+  duplicateCanvas: (id: string) => req<Canvas>('POST', `/canvases/${id}/duplicate`),
 
   // sessions
   startSession: (type: 'work' | 'break' | 'pause', task_id?: string | null) =>

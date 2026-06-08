@@ -1,19 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { nanoid } from 'nanoid';
-import { Plus, Copy, Trash2, Network, LayoutDashboard, Loader2 } from 'lucide-react';
-import type { Board, BoardDoc, BoardElement, BoardElementType, MindMap, MindMapDoc } from '@swit/shared';
+import { Plus, Copy, Trash2, Network, LayoutDashboard, Layers, Loader2 } from 'lucide-react';
+import type { Board, BoardDoc, Canvas, CanvasDoc, MindMap, MindMapDoc } from '@swit/shared';
 import { api } from '../api';
 import { pushToast } from '../hooks/useToasts';
-import { createBlankDoc, normalizeMindMapDoc } from '../lib/mindmap/doc';
+import { normalizeMindMapDoc } from '../lib/mindmap/doc';
 import { getTheme } from '../lib/mindmap/themes';
 import { toSvg } from '../lib/mindmap/exporters';
-import { createBlankBoard, defaultElement, normalizeBoardDoc } from '../lib/board/doc';
+import { normalizeBoardDoc } from '../lib/board/doc';
+import { blankCanvasContent } from '../lib/canvas/store';
 
-type Kind = 'map' | 'board';
+type Kind = 'canvas' | 'map' | 'board';
 type Filter = 'all' | Kind;
 
-interface CanvasItem {
+interface Item {
   kind: Kind;
   id: string;
   title: string;
@@ -22,82 +23,11 @@ interface CanvasItem {
   count: number;
 }
 
-interface MapTemplate {
-  key: string;
-  title: string;
-  hint: string;
-  build: () => { title: string; doc: MindMapDoc };
-}
-interface BoardTemplate {
-  key: string;
-  title: string;
-  hint: string;
-  build: () => { title: string; doc: BoardDoc };
+function mapSvg(doc: MindMapDoc): string {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(toSvg(doc, getTheme(doc.theme)))}`;
 }
 
-// --- шаблоны карт ---
-function withChildren(rootText: string, children: string[]): { title: string; doc: MindMapDoc } {
-  const rootId = nanoid();
-  const doc = createBlankDoc(rootId, rootText);
-  const nodes = [...doc.nodes];
-  for (const text of children) nodes.push({ id: nanoid(), parentId: rootId, text });
-  return { title: rootText, doc: { ...doc, nodes } };
-}
-
-const MAP_TEMPLATES: MapTemplate[] = [
-  { key: 'blank', title: 'Пустая карта', hint: 'Один узел', build: () => ({ title: 'Новая карта', doc: createBlankDoc(nanoid()) }) },
-  { key: 'project', title: 'План проекта', hint: 'Цели · Этапы · Риски', build: () => withChildren('Проект', ['Цели', 'Этапы', 'Команда', 'Риски', 'Сроки']) },
-  { key: 'brainstorm', title: 'Брейншторм', hint: 'Зачем · Для кого · Фишки', build: () => withChildren('Идея', ['Зачем', 'Для кого', 'Фишки', 'Каналы', 'Следующие шаги']) },
-  { key: 'swot', title: 'SWOT-анализ', hint: 'S · W · O · T', build: () => withChildren('SWOT', ['Сильные стороны', 'Слабые стороны', 'Возможности', 'Угрозы']) }
-];
-
-// --- шаблоны досок ---
-function el(type: BoardElementType, x: number, y: number, text: string): BoardElement {
-  return { ...defaultElement(type, nanoid(), x, y), text, zIndex: 1 };
-}
-const BOARD_TEMPLATES: BoardTemplate[] = [
-  { key: 'blank', title: 'Пустая доска', hint: 'Чистый холст', build: () => ({ title: 'Новая доска', doc: createBlankBoard() }) },
-  {
-    key: 'ideas',
-    title: 'Доска идей',
-    hint: 'Заголовок и стикеры',
-    build: () => ({
-      title: 'Идеи',
-      doc: {
-        elements: [
-          { ...el('text', 40, 20, 'Идеи'), width: 240, height: 48, style: { fontSize: 28, color: '#0f172a' } },
-          el('sticker', 40, 100, 'Зачем?'),
-          el('sticker', 250, 100, 'Для кого?'),
-          el('sticker', 460, 100, 'Фишки')
-        ]
-      }
-    })
-  },
-  {
-    key: 'kanban',
-    title: 'Канбан',
-    hint: 'Сделать · В работе · Готово',
-    build: () => ({
-      title: 'Канбан',
-      doc: { elements: [el('card', 40, 40, 'Сделать'), el('card', 320, 40, 'В работе'), el('card', 600, 40, 'Готово')] }
-    })
-  }
-];
-
-function mapItem(m: MindMap): CanvasItem {
-  let preview: string | null = null;
-  let count = 0;
-  try {
-    const doc = normalizeMindMapDoc(JSON.parse(m.content), m.id);
-    count = doc.nodes.length;
-    preview = `data:image/svg+xml;utf8,${encodeURIComponent(toSvg(doc, getTheme(doc.theme)))}`;
-  } catch {
-    /* битый документ — без превью */
-  }
-  return { kind: 'map', id: m.id, title: m.title, updatedAt: m.updated_at, preview, count };
-}
-
-function boardPreview(doc: BoardDoc): string | null {
+function boardSvg(doc: BoardDoc): string | null {
   if (doc.elements.length === 0) return null;
   let minX = Infinity;
   let minY = Infinity;
@@ -128,35 +58,70 @@ function boardPreview(doc: BoardDoc): string | null {
   )}`;
 }
 
-function boardItem(b: Board): CanvasItem {
+function mapItem(m: MindMap): Item {
+  let preview: string | null = null;
+  let count = 0;
+  try {
+    const doc = normalizeMindMapDoc(JSON.parse(m.content), m.id);
+    count = doc.nodes.length;
+    preview = mapSvg(doc);
+  } catch {
+    /* битый */
+  }
+  return { kind: 'map', id: m.id, title: m.title, updatedAt: m.updated_at, preview, count };
+}
+
+function boardItem(b: Board): Item {
   let preview: string | null = null;
   let count = 0;
   try {
     const doc = normalizeBoardDoc(JSON.parse(b.content));
     count = doc.elements.length;
-    preview = boardPreview(doc);
+    preview = boardSvg(doc);
   } catch {
-    /* битый документ — без превью */
+    /* битый */
   }
   return { kind: 'board', id: b.id, title: b.title, updatedAt: b.updated_at, preview, count };
 }
 
+function canvasItem(c: Canvas): Item {
+  let preview: string | null = null;
+  let count = 0;
+  try {
+    const parsed = JSON.parse(c.content) as Partial<CanvasDoc>;
+    const mindmap = normalizeMindMapDoc(parsed?.mindmap ?? null, c.id);
+    const board = normalizeBoardDoc(parsed?.board ?? null);
+    count = mindmap.nodes.length + board.elements.length;
+    preview = mindmap.nodes.length > 1 ? mapSvg(mindmap) : boardSvg(board);
+  } catch {
+    /* битый */
+  }
+  return { kind: 'canvas', id: c.id, title: c.title, updatedAt: c.updated_at, preview, count };
+}
+
+const KIND_META: Record<Kind, { label: string; icon: typeof Network; route: string }> = {
+  canvas: { label: 'Холст', icon: Layers, route: 'canvas' },
+  map: { label: 'Карта', icon: Network, route: 'maps' },
+  board: { label: 'Доска', icon: LayoutDashboard, route: 'boards' }
+};
+
 export default function Canvases(): JSX.Element {
   const nav = useNavigate();
+  const [canvases, setCanvases] = useState<Canvas[]>([]);
   const [maps, setMaps] = useState<MindMap[]>([]);
   const [boards, setBoards] = useState<Board[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
-  const [createKind, setCreateKind] = useState<Kind>('map');
 
   async function load(): Promise<void> {
     try {
-      const [m, b] = await Promise.all([api.listMaps(), api.listBoards()]);
+      const [c, m, b] = await Promise.all([api.listCanvases(), api.listMaps(), api.listBoards()]);
+      setCanvases(c);
       setMaps(m);
       setBoards(b);
     } catch {
-      pushToast({ kind: 'error', message: 'Не удалось загрузить холсты' });
+      pushToast({ kind: 'error', message: 'Не удалось загрузить' });
     } finally {
       setLoading(false);
     }
@@ -167,39 +132,27 @@ export default function Canvases(): JSX.Element {
   }, []);
 
   const items = useMemo(() => {
-    const all = [...maps.map(mapItem), ...boards.map(boardItem)];
+    const all = [...canvases.map(canvasItem), ...maps.map(mapItem), ...boards.map(boardItem)];
     all.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
     return filter === 'all' ? all : all.filter((i) => i.kind === filter);
-  }, [maps, boards, filter]);
+  }, [canvases, maps, boards, filter]);
 
-  async function createMap(tpl: MapTemplate): Promise<void> {
+  async function createCanvas(): Promise<void> {
     if (creating) return;
     setCreating(true);
     try {
-      const { title, doc } = tpl.build();
-      const row = await api.createMap({ title, content: JSON.stringify(doc) });
-      nav(`/maps/${row.id}`);
+      const row = await api.createCanvas({ title: 'Новый холст', content: blankCanvasContent(nanoid()) });
+      nav(`/canvas/${row.id}`);
     } catch {
-      pushToast({ kind: 'error', message: 'Не удалось создать карту' });
-      setCreating(false);
-    }
-  }
-  async function createBoard(tpl: BoardTemplate): Promise<void> {
-    if (creating) return;
-    setCreating(true);
-    try {
-      const { title, doc } = tpl.build();
-      const row = await api.createBoard({ title, content: JSON.stringify(doc) });
-      nav(`/boards/${row.id}`);
-    } catch {
-      pushToast({ kind: 'error', message: 'Не удалось создать доску' });
+      pushToast({ kind: 'error', message: 'Не удалось создать холст' });
       setCreating(false);
     }
   }
 
-  async function duplicate(item: CanvasItem): Promise<void> {
+  async function duplicate(item: Item): Promise<void> {
     try {
-      if (item.kind === 'map') await api.duplicateMap(item.id);
+      if (item.kind === 'canvas') await api.duplicateCanvas(item.id);
+      else if (item.kind === 'map') await api.duplicateMap(item.id);
       else await api.duplicateBoard(item.id);
       await load();
     } catch {
@@ -207,87 +160,67 @@ export default function Canvases(): JSX.Element {
     }
   }
 
-  async function remove(item: CanvasItem): Promise<void> {
+  async function remove(item: Item): Promise<void> {
     if (!confirm('Удалить? Действие необратимо.')) return;
     try {
-      if (item.kind === 'map') {
+      if (item.kind === 'canvas') {
+        await api.deleteCanvas(item.id);
+        setCanvases((p) => p.filter((x) => x.id !== item.id));
+      } else if (item.kind === 'map') {
         await api.deleteMap(item.id);
-        setMaps((prev) => prev.filter((m) => m.id !== item.id));
+        setMaps((p) => p.filter((x) => x.id !== item.id));
       } else {
         await api.deleteBoard(item.id);
-        setBoards((prev) => prev.filter((b) => b.id !== item.id));
+        setBoards((p) => p.filter((x) => x.id !== item.id));
       }
     } catch {
       pushToast({ kind: 'error', message: 'Не удалось удалить' });
     }
   }
 
+  const hasLegacy = maps.length > 0 || boards.length > 0;
+
   return (
     <div className="h-full overflow-y-auto px-8 py-7 max-w-[1100px] mx-auto w-full">
       <header className="mb-7">
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2.5">
-          <LayoutDashboard className="text-accent" size={24} /> Холсты
+          <Layers className="text-accent" size={24} /> Холсты
         </h1>
         <p className="text-sm text-muted mt-1">
-          Интеллект-карты (структура деревом) и свободные доски (стикеры, фигуры, стрелки) — в одном месте.
+          Один холст: дерево-карта и свободные элементы (стикеры, фигуры, стрелки, рисунок) вместе.
         </p>
       </header>
 
-      {/* Создать */}
       <section className="mb-9">
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-xs uppercase tracking-wide text-muted">Создать</div>
-          <Segmented
-            value={createKind}
-            onChange={(v) => setCreateKind(v as Kind)}
-            options={[
-              { value: 'map', label: 'Карта' },
-              { value: 'board', label: 'Доска' }
-            ]}
-          />
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {createKind === 'map'
-            ? MAP_TEMPLATES.map((tpl) => (
-                <TemplateCard
-                  key={tpl.key}
-                  title={tpl.title}
-                  hint={tpl.hint}
-                  blank={tpl.key === 'blank'}
-                  kind="map"
-                  disabled={creating}
-                  onClick={() => createMap(tpl)}
-                />
-              ))
-            : BOARD_TEMPLATES.map((tpl) => (
-                <TemplateCard
-                  key={tpl.key}
-                  title={tpl.title}
-                  hint={tpl.hint}
-                  blank={tpl.key === 'blank'}
-                  kind="board"
-                  disabled={creating}
-                  onClick={() => createBoard(tpl)}
-                />
-              ))}
-        </div>
+        <button
+          onClick={createCanvas}
+          disabled={creating}
+          className="group inline-flex items-center gap-2 rounded-xl bg-accent text-white px-5 py-3 font-semibold text-sm hover:opacity-90 transition disabled:opacity-60"
+          style={{ boxShadow: '0 8px 24px -12px rgba(37,99,235,0.7)' }}
+        >
+          {creating ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
+          Новый холст
+        </button>
       </section>
 
-      {/* Список */}
       <section>
         <div className="flex items-center justify-between mb-3">
           <div className="text-xs uppercase tracking-wide text-muted">
-            Все холсты {items.length > 0 && <span className="text-faint">· {items.length}</span>}
+            Все {items.length > 0 && <span className="text-faint">· {items.length}</span>}
           </div>
-          <Segmented
-            value={filter}
-            onChange={(v) => setFilter(v as Filter)}
-            options={[
-              { value: 'all', label: 'Все' },
-              { value: 'map', label: 'Карты' },
-              { value: 'board', label: 'Доски' }
-            ]}
-          />
+          <div className="inline-flex rounded-lg border border-border bg-surface p-0.5 gap-0.5">
+            {(['all', 'canvas', ...(hasLegacy ? (['map', 'board'] as const) : [])] as Filter[]).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition ${
+                  filter === f ? 'bg-accent text-white' : 'text-muted hover:text-ink'
+                }`}
+              >
+                {f === 'all' ? 'Все' : f === 'canvas' ? 'Холсты' : f === 'map' ? 'Карты' : 'Доски'}
+              </button>
+            ))}
+          </div>
         </div>
 
         {loading ? (
@@ -296,7 +229,7 @@ export default function Canvases(): JSX.Element {
           </div>
         ) : items.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border py-14 text-center text-muted">
-            Пусто. Создайте карту или доску выше.
+            Пусто. Нажмите «Новый холст», чтобы начать.
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -304,7 +237,7 @@ export default function Canvases(): JSX.Element {
               <ItemCard
                 key={`${item.kind}-${item.id}`}
                 item={item}
-                onOpen={() => nav(`/${item.kind === 'map' ? 'maps' : 'boards'}/${item.id}`)}
+                onOpen={() => nav(`/${KIND_META[item.kind].route}/${item.id}`)}
                 onDuplicate={() => duplicate(item)}
                 onDelete={() => remove(item)}
               />
@@ -316,76 +249,20 @@ export default function Canvases(): JSX.Element {
   );
 }
 
-function Segmented({
-  value,
-  onChange,
-  options
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}): JSX.Element {
-  return (
-    <div className="inline-flex rounded-lg border border-border bg-surface p-0.5 gap-0.5">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          onClick={() => onChange(o.value)}
-          className={`px-3 py-1 rounded-md text-xs font-medium transition ${
-            value === o.value ? 'bg-accent text-white' : 'text-muted hover:text-ink'
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function TemplateCard({
-  title,
-  hint,
-  blank,
-  kind,
-  disabled,
-  onClick
-}: {
-  title: string;
-  hint: string;
-  blank: boolean;
-  kind: Kind;
-  disabled: boolean;
-  onClick: () => void;
-}): JSX.Element {
-  const Icon = blank ? Plus : kind === 'map' ? Network : LayoutDashboard;
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="group relative text-left rounded-xl border border-border bg-surface p-4 hover:border-accent hover:-translate-y-0.5 transition-all overflow-hidden disabled:opacity-60"
-      style={{ boxShadow: '0 1px 2px rgba(15,23,42,0.05)' }}
-    >
-      <div className="flex items-center gap-2 font-semibold text-sm">
-        <Icon size={15} /> {title}
-      </div>
-      <div className="text-xs text-muted mt-1.5 leading-snug">{hint}</div>
-    </button>
-  );
-}
-
 function ItemCard({
   item,
   onOpen,
   onDuplicate,
   onDelete
 }: {
-  item: CanvasItem;
+  item: Item;
   onOpen: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
 }): JSX.Element {
-  const Icon = item.kind === 'map' ? Network : LayoutDashboard;
-  const unit = item.kind === 'map' ? 'узл.' : 'элем.';
+  const meta = KIND_META[item.kind];
+  const Icon = meta.icon;
+  const unit = item.kind === 'map' ? 'узл.' : item.kind === 'board' ? 'элем.' : 'эл.';
   return (
     <div
       onClick={onOpen}
@@ -399,7 +276,7 @@ function ItemCard({
           <Icon className="text-faint" size={22} />
         )}
         <span className="absolute top-2 left-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface/90 border border-border text-[11px] font-medium text-muted">
-          <Icon size={11} /> {item.kind === 'map' ? 'Карта' : 'Доска'}
+          <Icon size={11} /> {meta.label}
         </span>
       </div>
 

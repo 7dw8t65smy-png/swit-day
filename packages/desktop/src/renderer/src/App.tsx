@@ -10,6 +10,7 @@ const Today = lazy(() => import('./pages/Today'));
 const Tasks = lazy(() => import('./pages/Tasks'));
 const Notes = lazy(() => import('./pages/Notes'));
 const Canvases = lazy(() => import('./pages/Canvases'));
+const CanvasEditor = lazy(() => import('./pages/CanvasEditor'));
 const MapEditor = lazy(() => import('./pages/MapEditor'));
 const BoardEditor = lazy(() => import('./pages/BoardEditor'));
 const Calendar = lazy(() => import('./pages/Calendar'));
@@ -152,6 +153,7 @@ export default function App() {
                 <Route path="/tasks" element={<Tasks />} />
                 <Route path="/notes" element={<Notes />} />
                 <Route path="/canvas" element={<Canvases />} />
+                <Route path="/canvas/:id" element={<CanvasEditor />} />
                 <Route path="/maps" element={<Navigate to="/canvas" replace />} />
                 <Route path="/maps/:id" element={<MapEditor />} />
                 <Route path="/boards" element={<Navigate to="/canvas" replace />} />
