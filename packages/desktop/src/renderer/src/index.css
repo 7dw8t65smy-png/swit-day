@@ -104,6 +104,15 @@ select.input { padding: 0 0.5rem; }
   animation: pageEnter 0.18s ease-out;
 }
 
+/* Появление тоста: въезд снизу-справа + лёгкий fade. Только transform/opacity (GPU). */
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-toast-in {
+  animation: toastIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* <kbd> для оверлея горячих клавиш. */
 .kbd {
   display: inline-flex;
@@ -128,6 +137,7 @@ select.input { padding: 0 0.5rem; }
   .animate-page,
   .animate-pop-in,
   .animate-fade-in,
+  .animate-toast-in,
   .animate-in.slide-in-from-right,
   .streak-royal-pulse {
     animation: none;

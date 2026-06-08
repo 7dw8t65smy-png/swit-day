@@ -26,6 +26,7 @@ import type {
   TransactionSummary,
   WorkSession
 } from '@swit/shared';
+import { pushToast } from './hooks/useToasts';
 
 const DEFAULT_URL = 'http://127.0.0.1:47821';
 
@@ -66,17 +67,49 @@ export function resetApiUrl(): void {
   bearer = null;
 }
 
+// Короткое, человеческое сообщение об ошибке по HTTP-статусу.
+// Технические детали (метод/путь/код) уходят отдельной приглушённой строкой.
+function friendlyHttpMessage(status: number): string {
+  if (status === 401 || status === 403) return 'Нет доступа. Проверьте подключение к серверу.';
+  if (status === 404) return 'Ресурс не найден.';
+  if (status === 409) return 'Конфликт данных. Обновите и попробуйте снова.';
+  if (status >= 500) return `Не удалось сохранить. Сервер ответил ${status}.`;
+  if (status >= 400) return 'Запрос отклонён. Проверьте данные и попробуйте снова.';
+  return `Ошибка запроса (${status}).`;
+}
+
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const base = await url();
   const headers: Record<string, string> = {};
   if (body) headers['Content-Type'] = 'application/json';
   if (bearer) headers['Authorization'] = `Bearer ${bearer}`;
-  const res = await fetch(base + path, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined
-  });
-  if (!res.ok) throw new Error(`${method} ${path} → ${res.status}`);
+
+  let res: Response;
+  try {
+    res = await fetch(base + path, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined
+    });
+  } catch (err) {
+    // Сетевой сбой (сервер недоступен, разрыв соединения). Всплываем тост и
+    // пробрасываем дальше, чтобы поведение вызывающих не менялось.
+    pushToast({
+      kind: 'error',
+      message: 'Нет связи с сервером. Проверьте, запущен ли он.',
+      detail: `${method} ${path}`
+    });
+    throw err;
+  }
+
+  if (!res.ok) {
+    pushToast({
+      kind: 'error',
+      message: friendlyHttpMessage(res.status),
+      detail: `${method} ${path} → ${res.status}`
+    });
+    throw new Error(`${method} ${path} → ${res.status}`);
+  }
   return res.json() as Promise<T>;
 }
 
