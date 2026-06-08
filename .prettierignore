@@ -1,0 +1,8 @@
+node_modules
+dist
+out
+release
+.vite
+.electron-vite
+package-lock.json
+*.md

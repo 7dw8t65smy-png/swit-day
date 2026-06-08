@@ -1,6 +1,7 @@
 // Копирует собранный сервер (packages/server/dist) и его prod-зависимости
 // в out/server. Без зависимостей packaged-приложение не сможет загрузить
 // fastify / better-sqlite3 при child_process.fork().
+/* global console */
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

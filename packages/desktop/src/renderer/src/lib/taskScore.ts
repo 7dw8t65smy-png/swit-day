@@ -21,7 +21,7 @@ export interface ScoredTask {
 
 export function scoreTask(task: Task, today: string): ScoredTask {
   let score = PRIORITY_W[task.priority] + DIFFICULTY_W[task.difficulty ?? 'medium'];
-  let reasonParts: string[] = [];
+  const reasonParts: string[] = [];
 
   // Due date weighting
   if (task.due_date) {
