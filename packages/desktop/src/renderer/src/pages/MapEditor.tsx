@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
   Background,
   Controls,
   MiniMap,
+  useNodesState,
+  useEdgesState,
   type Node,
   type Edge,
   type NodeMouseHandler
@@ -22,19 +24,89 @@ import {
   PanelLeft,
   Network
 } from 'lucide-react';
-import type { MindMapLayout } from '@swit/shared';
+import type { MindMapDoc, MindMapLayout, MindMapNode } from '@swit/shared';
 import { useMindMap } from '../lib/mindmap/store';
 import { layoutMap } from '../lib/mindmap/layout';
-import { branchColor, depthOf, getChildren, visibleNodes } from '../lib/mindmap/doc';
-import MindNode from '../components/mindmap/MindNode';
+import { DEFAULT_BRANCH_COLORS } from '../lib/mindmap/doc';
+import MindNode, { type MindNodeData } from '../components/mindmap/MindNode';
 
 const nodeTypes = { mind: MindNode };
+const ROOT_COLOR = '#334155';
 
 const LAYOUTS: { value: MindMapLayout; label: string; icon: typeof PanelRight }[] = [
   { value: 'right', label: 'Вправо', icon: PanelRight },
   { value: 'left', label: 'Влево', icon: PanelLeft },
   { value: 'tree', label: 'Вниз', icon: Network }
 ];
+
+interface BuiltView {
+  nodes: Node[];
+  edges: Edge[];
+}
+
+// Один O(N) проход: индекс детей, позиции, цвета веток, глубина → ноды и рёбра.
+// Раньше цвет/глубина считались на каждый рендер для каждого узла (O(N^2)).
+function buildView(doc: MindMapDoc, selectedId: string | null, editingId: string | null): BuiltView {
+  const byId = new Map<string, MindMapNode>();
+  const children = new Map<string, MindMapNode[]>();
+  for (const n of doc.nodes) {
+    byId.set(n.id, n);
+    if (n.parentId) {
+      const arr = children.get(n.parentId);
+      if (arr) arr.push(n);
+      else children.set(n.parentId, [n]);
+    }
+  }
+  const pos = layoutMap(doc);
+  const horizontal = doc.layout !== 'tree';
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
+
+  const pushNode = (n: MindMapNode, color: string, depth: number): void => {
+    const p = pos[n.id];
+    if (!p) return;
+    const kids = children.get(n.id) ?? [];
+    const data: MindNodeData = {
+      nodeId: n.id,
+      label: n.text,
+      color,
+      emoji: n.emoji ?? null,
+      isRoot: n.id === doc.rootId,
+      depth,
+      collapsed: n.collapsed,
+      hasChildren: kids.length > 0,
+      childCount: kids.length,
+      horizontal,
+      editing: n.id === editingId
+    };
+    nodes.push({ id: n.id, type: 'mind', position: p, selected: n.id === selectedId, data });
+  };
+
+  const root = byId.get(doc.rootId);
+  if (root) pushNode(root, ROOT_COLOR, 0);
+
+  const walk = (n: MindMapNode, color: string, depth: number): void => {
+    pushNode(n, color, depth);
+    if (n.parentId && pos[n.id] && pos[n.parentId]) {
+      edges.push({
+        id: `${n.parentId}-${n.id}`,
+        source: n.parentId,
+        target: n.id,
+        type: 'default',
+        style: { stroke: color }
+      });
+    }
+    if (n.collapsed) return;
+    for (const k of children.get(n.id) ?? []) walk(k, k.color ?? color, depth + 1);
+  };
+
+  (children.get(doc.rootId) ?? []).forEach((c, i) => {
+    const color = c.color ?? DEFAULT_BRANCH_COLORS[i % DEFAULT_BRANCH_COLORS.length];
+    walk(c, color, 1);
+  });
+
+  return { nodes, edges };
+}
 
 export default function MapEditor(): JSX.Element {
   const { id = '' } = useParams();
@@ -43,6 +115,7 @@ export default function MapEditor(): JSX.Element {
   const doc = useMindMap((s) => s.doc);
   const title = useMindMap((s) => s.title);
   const selectedId = useMindMap((s) => s.selectedId);
+  const editingId = useMindMap((s) => s.editingId);
   const loading = useMindMap((s) => s.loading);
   const saving = useMindMap((s) => s.saving);
   const canUndo = useMindMap((s) => s.past.length > 0);
@@ -53,65 +126,35 @@ export default function MapEditor(): JSX.Element {
     return () => useMindMap.getState().reset();
   }, [id]);
 
-  const pos = useMemo(() => (doc ? layoutMap(doc) : {}), [doc]);
+  const view = useMemo(
+    () => (doc ? buildView(doc, selectedId, editingId) : { nodes: [], edges: [] }),
+    [doc, selectedId, editingId]
+  );
 
-  const rfNodes = useMemo<Node[]>(() => {
-    if (!doc) return [];
-    return visibleNodes(doc).map((n) => {
-      const kids = getChildren(doc, n.id);
-      return {
-        id: n.id,
-        type: 'mind',
-        position: pos[n.id] ?? { x: 0, y: 0 },
-        selected: n.id === selectedId,
-        data: {
-          nodeId: n.id,
-          label: n.text,
-          color: branchColor(doc, n.id),
-          emoji: n.emoji ?? null,
-          isRoot: n.id === doc.rootId,
-          depth: depthOf(doc, n.id),
-          collapsed: n.collapsed,
-          hasChildren: kids.length > 0,
-          childCount: kids.length,
-          horizontal: doc.layout !== 'tree'
-        }
-      };
-    });
-  }, [doc, pos, selectedId]);
+  // React Flow владеет массивами (размеры/измерения), мы заменяем их при
+  // изменении документа/выделения. Стабильные id → React сверяет по ключу,
+  // а memo на MindNode не даёт перерисовывать неизменившиеся узлы.
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  useEffect(() => {
+    setNodes(view.nodes);
+  }, [view.nodes, setNodes]);
+  useEffect(() => {
+    setEdges(view.edges);
+  }, [view.edges, setEdges]);
 
-  const rfEdges = useMemo<Edge[]>(() => {
-    if (!doc) return [];
-    const vis = new Set(visibleNodes(doc).map((n) => n.id));
-    return doc.nodes
-      .filter((n) => n.parentId && vis.has(n.id) && vis.has(n.parentId))
-      .map((n) => ({
-        id: `${n.parentId}-${n.id}`,
-        source: n.parentId as string,
-        target: n.id,
-        type: 'default',
-        style: { stroke: branchColor(doc, n.id) }
-      }));
-  }, [doc]);
-
-  const onNodeClick = useCallback<NodeMouseHandler>((_e, node) => {
-    useMindMap.getState().select(node.id);
-  }, []);
-  const onNodeDoubleClick = useCallback<NodeMouseHandler>((_e, node) => {
-    useMindMap.getState().setEditing(node.id);
-  }, []);
-  const onPaneClick = useCallback(() => {
+  const onNodeClick: NodeMouseHandler = (_e, node) => useMindMap.getState().select(node.id);
+  const onNodeDoubleClick: NodeMouseHandler = (_e, node) => useMindMap.getState().setEditing(node.id);
+  const onPaneClick = (): void => {
     const s = useMindMap.getState();
     s.select(null);
     s.setEditing(null);
-  }, []);
+  };
 
-  // Горячие клавиши в стиле xmind. Состояние читаем из getState(),
-  // чтобы не пересоздавать слушатель на каждое изменение.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const s = useMindMap.getState();
-      if (s.editingId) return; // правка ноды — её textarea сама обрабатывает
+      if (s.editingId) return;
       const target = e.target as HTMLElement | null;
       if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
 
@@ -151,11 +194,9 @@ export default function MapEditor(): JSX.Element {
 
   return (
     // h-screen (а не h-full): родитель страницы — min-h-full, поэтому height:100%
-    // схлопывается в auto и холст React Flow получает 0px высоты. main = 100vh,
-    // так что h-screen заполняет область ровно и холст получает реальную высоту.
+    // схлопывается в auto и холст React Flow получает 0px высоты.
     <div className="flex flex-col h-screen">
-      {/* Тулбар */}
-      <header className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-surface/80 backdrop-blur z-10">
+      <header className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-surface z-10">
         <button
           onClick={() => nav('/maps')}
           className="p-2 rounded-md hover:bg-surface2 text-muted hover:text-ink"
@@ -171,18 +212,10 @@ export default function MapEditor(): JSX.Element {
         />
 
         <div className="flex items-center gap-1 ml-auto">
-          <ToolbarBtn
-            title="Отменить (⌘Z)"
-            disabled={!canUndo}
-            onClick={() => useMindMap.getState().undo()}
-          >
+          <ToolbarBtn title="Отменить (⌘Z)" disabled={!canUndo} onClick={() => useMindMap.getState().undo()}>
             <Undo2 size={16} />
           </ToolbarBtn>
-          <ToolbarBtn
-            title="Повторить (⌘⇧Z)"
-            disabled={!canRedo}
-            onClick={() => useMindMap.getState().redo()}
-          >
+          <ToolbarBtn title="Повторить (⌘⇧Z)" disabled={!canRedo} onClick={() => useMindMap.getState().redo()}>
             <Redo2 size={16} />
           </ToolbarBtn>
 
@@ -222,7 +255,6 @@ export default function MapEditor(): JSX.Element {
         </div>
       </header>
 
-      {/* Холст */}
       <div className="relative flex-1">
         {loading || !doc ? (
           <div className="absolute inset-0 grid place-items-center text-muted">
@@ -231,15 +263,18 @@ export default function MapEditor(): JSX.Element {
         ) : (
           <ReactFlow
             className="mind-canvas"
-            nodes={rfNodes}
-            edges={rfEdges}
+            nodes={nodes}
+            edges={edges}
             nodeTypes={nodeTypes}
-            onNodesChange={() => {}}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClick}
             onNodeDoubleClick={onNodeDoubleClick}
             onPaneClick={onPaneClick}
+            nodeOrigin={[0.5, 0.5]}
             nodesDraggable={false}
             nodesConnectable={false}
+            onlyRenderVisibleElements
             fitView
             fitViewOptions={{ padding: 0.3, maxZoom: 1.1 }}
             minZoom={0.2}
