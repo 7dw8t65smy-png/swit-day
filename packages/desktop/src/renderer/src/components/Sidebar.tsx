@@ -11,7 +11,8 @@ import {
   Moon,
   ListChecks,
   Flame,
-  Wallet
+  Wallet,
+  Network
 } from 'lucide-react';
 // FolderKanban kept available if a project section returns later
 import { useSettings } from '../lib/settings';
@@ -24,6 +25,7 @@ const items = [
   { to: '/tasks', label: 'Задачи', icon: ListTodo },
   { to: '/habits', label: 'Рутины', icon: Flame },
   { to: '/notes', label: 'Заметки', icon: StickyNote },
+  { to: '/maps', label: 'Карты', icon: Network },
   { to: '/calendar', label: 'Календарь', icon: CalIcon },
   { to: '/playbooks', label: 'Регламенты', icon: ListChecks },
   { to: '/finance', label: 'Расходы', icon: Wallet },

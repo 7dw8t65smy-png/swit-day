@@ -8,6 +8,7 @@ import type {
   HabitPeriodResult,
   HabitStats,
   JournalEntry,
+  MindMap,
   Note,
   PaymentMethod,
   Playbook,
@@ -172,6 +173,16 @@ export const api = {
     req<Note>('POST', '/notes', b),
   updateNote: (id: string, b: Partial<Note>) => req<Note>('PATCH', `/notes/${id}`, b),
   deleteNote: (id: string) => req<{ ok: true }>('DELETE', `/notes/${id}`),
+
+  // mind maps
+  listMaps: () => req<MindMap[]>('GET', '/maps'),
+  getMap: (id: string) => req<MindMap>('GET', `/maps/${id}`),
+  createMap: (b: { title: string; content: string; theme?: string }) =>
+    req<MindMap>('POST', '/maps', b),
+  updateMap: (id: string, b: Partial<{ title: string; content: string; theme: string }>) =>
+    req<MindMap>('PUT', `/maps/${id}`, b),
+  deleteMap: (id: string) => req<{ ok: true }>('DELETE', `/maps/${id}`),
+  duplicateMap: (id: string) => req<MindMap>('POST', `/maps/${id}/duplicate`),
 
   // sessions
   startSession: (type: 'work' | 'break' | 'pause', task_id?: string | null) =>
