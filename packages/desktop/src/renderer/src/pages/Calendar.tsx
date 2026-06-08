@@ -20,6 +20,14 @@ import EventDialog from '../components/EventDialog';
 import TaskDrawer from '../components/TaskDrawer';
 import { sortByPriority } from '../lib/priority';
 import { PRIORITY_COLOR } from '../lib/priority';
+import {
+  CALENDAR_MOVE_MIME,
+  encodeMove,
+  readMove,
+  markDragging,
+  clearDragging,
+  type CalendarMovePayload
+} from './calendar/dragMove';
 
 type View = 'month' | 'week' | 'day';
 
@@ -38,6 +46,8 @@ export default function Calendar() {
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   const [quickCreate, setQuickCreate] = useState<QuickCreate | null>(null);
   const [drawerTaskId, setDrawerTaskId] = useState<string | null>(null);
+  // Day key ('yyyy-MM-dd') currently hovered during a calendar-item drag.
+  const [dragOverDay, setDragOverDay] = useState<string | null>(null);
 
   useEffect(() => {
     void reload();
@@ -89,6 +99,20 @@ export default function Calendar() {
 
   async function unscheduleTask(taskId: string) {
     await api.updateTask(taskId, { due_time: null });
+    await reload();
+  }
+
+  /**
+   * Move an event or a scheduled task to a different day. Start/end times
+   * (events) and due_time (tasks) are preserved — only the date changes.
+   */
+  async function moveItem(payload: CalendarMovePayload, toDate: string) {
+    if (payload.fromDate === toDate) return;
+    if (payload.kind === 'event') {
+      await api.updateEvent(payload.id, { date: toDate });
+    } else {
+      await api.updateTask(payload.id, { due_date: toDate });
+    }
     await reload();
   }
 
@@ -200,6 +224,14 @@ export default function Calendar() {
             eventsByDay={eventsByDay}
             onPickDay={(d) => setSelectedDate(d)}
             onQuickAdd={(d) => setQuickCreate({ date: format(d, 'yyyy-MM-dd') })}
+            onClickEvent={(e) => setEditing(e)}
+            dragOverDay={dragOverDay}
+            onDragEnterDay={setDragOverDay}
+            onDragLeaveDay={() => setDragOverDay(null)}
+            onDropDay={async (payload, toDate) => {
+              setDragOverDay(null);
+              await moveItem(payload, toDate);
+            }}
           />
         )}
         {view === 'week' && (
@@ -220,6 +252,13 @@ export default function Calendar() {
             onDropTask={async (taskId, date, hour) => {
               const hh = String(hour).padStart(2, '0');
               await scheduleTask(taskId, format(date, 'yyyy-MM-dd'), `${hh}:00`);
+            }}
+            dragOverDay={dragOverDay}
+            onDragEnterDay={setDragOverDay}
+            onDragLeaveDay={() => setDragOverDay(null)}
+            onMoveItem={async (payload, toDate) => {
+              setDragOverDay(null);
+              await moveItem(payload, toDate);
             }}
           />
         )}
@@ -306,8 +345,18 @@ export default function Calendar() {
             {dayEvents.map((e) => (
               <li
                 key={e.id}
+                draggable
+                onDragStart={(ev) => {
+                  ev.dataTransfer.effectAllowed = 'move';
+                  ev.dataTransfer.setData(
+                    CALENDAR_MOVE_MIME,
+                    encodeMove({ kind: 'event', id: e.id, fromDate: e.date })
+                  );
+                  markDragging(ev.currentTarget);
+                }}
+                onDragEnd={(ev) => clearDragging(ev.currentTarget)}
                 onClick={() => setEditing(e)}
-                className="rounded-md p-3 border border-border cursor-pointer hover:bg-surface2 transition"
+                className="rounded-md p-3 border border-border cursor-grab active:cursor-grabbing hover:bg-surface2 transition"
                 style={{ borderLeftWidth: 3, borderLeftColor: e.color ?? '#2563EB' }}
               >
                 <div className="text-sm font-medium">{e.title}</div>
@@ -391,13 +440,23 @@ function MonthGrid({
   selectedDate,
   eventsByDay,
   onPickDay,
-  onQuickAdd
+  onQuickAdd,
+  onClickEvent,
+  dragOverDay,
+  onDragEnterDay,
+  onDragLeaveDay,
+  onDropDay
 }: {
   anchor: Date;
   selectedDate: Date;
   eventsByDay: Map<string, CalendarEvent[]>;
   onPickDay: (d: Date) => void;
   onQuickAdd: (d: Date) => void;
+  onClickEvent: (e: CalendarEvent) => void;
+  dragOverDay: string | null;
+  onDragEnterDay: (dayKey: string) => void;
+  onDragLeaveDay: () => void;
+  onDropDay: (payload: CalendarMovePayload, toDate: string) => Promise<void>;
 }) {
   const monthStart = startOfMonth(anchor);
   const monthEnd = endOfMonth(anchor);
@@ -424,17 +483,41 @@ function MonthGrid({
       </div>
       <div className="grid grid-cols-7 grid-rows-6">
         {days.map((day) => {
-          const evs = eventsByDay.get(format(day, 'yyyy-MM-dd')) ?? [];
+          const dayKey = format(day, 'yyyy-MM-dd');
+          const evs = eventsByDay.get(dayKey) ?? [];
           const outside = !isSameMonth(day, anchor);
           const selected = isSameDay(day, selectedDate);
+          const isDropTarget = dragOverDay === dayKey;
           return (
             <div
               key={day.toISOString()}
               onClick={() => onPickDay(day)}
               onDoubleClick={() => onQuickAdd(day)}
-              className={`group min-h-[100px] text-left p-2 border-b border-r border-border last:border-r-0 hover:bg-surface2 transition cursor-pointer relative ${
+              onDragOver={(ev) => {
+                if (readMove(ev.dataTransfer) || ev.dataTransfer.types.includes(CALENDAR_MOVE_MIME)) {
+                  ev.preventDefault();
+                  ev.dataTransfer.dropEffect = 'move';
+                  if (dragOverDay !== dayKey) onDragEnterDay(dayKey);
+                }
+              }}
+              onDragLeave={(ev) => {
+                // Ignore leaves into descendant chips within the same cell.
+                if (ev.currentTarget.contains(ev.relatedTarget as Node | null)) return;
+                if (dragOverDay === dayKey) onDragLeaveDay();
+              }}
+              onDrop={async (ev) => {
+                const payload = readMove(ev.dataTransfer);
+                if (!payload) return;
+                ev.preventDefault();
+                await onDropDay(payload, dayKey);
+              }}
+              className={`group min-h-[100px] text-left p-2 border-b border-r border-border last:border-r-0 transition cursor-pointer relative ${
                 outside ? 'bg-surface2/40' : ''
-              } ${selected ? 'bg-accent-light' : ''}`}
+              } ${selected ? 'bg-accent-light' : ''} ${
+                isDropTarget
+                  ? 'ring-2 ring-inset ring-accent !bg-accent-light z-10'
+                  : 'hover:bg-surface2'
+              }`}
             >
               <div className="flex items-center justify-between">
                 <div
@@ -459,7 +542,22 @@ function MonthGrid({
                 {evs.slice(0, 3).map((e) => (
                   <div
                     key={e.id}
-                    className="text-[11px] truncate rounded px-1.5 py-0.5"
+                    draggable
+                    onDragStart={(ev) => {
+                      ev.stopPropagation();
+                      ev.dataTransfer.effectAllowed = 'move';
+                      ev.dataTransfer.setData(
+                        CALENDAR_MOVE_MIME,
+                        encodeMove({ kind: 'event', id: e.id, fromDate: e.date })
+                      );
+                      markDragging(ev.currentTarget);
+                    }}
+                    onDragEnd={(ev) => clearDragging(ev.currentTarget)}
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      onClickEvent(e);
+                    }}
+                    className="text-[11px] truncate rounded px-1.5 py-0.5 cursor-grab active:cursor-grabbing hover:shadow-sm transition"
                     style={{
                       background: (e.color ?? '#2563EB') + '20',
                       color: e.color ?? '#2563EB'
@@ -489,7 +587,11 @@ function WeekGrid({
   onClickTask,
   onPickDay,
   onCellClick,
-  onDropTask
+  onDropTask,
+  dragOverDay,
+  onDragEnterDay,
+  onDragLeaveDay,
+  onMoveItem
 }: {
   anchor: Date;
   events: CalendarEvent[];
@@ -499,6 +601,10 @@ function WeekGrid({
   onPickDay: (d: Date) => void;
   onCellClick: (date: Date, hour: number) => void;
   onDropTask: (taskId: string, date: Date, hour: number) => Promise<void>;
+  dragOverDay: string | null;
+  onDragEnterDay: (dayKey: string) => void;
+  onDragLeaveDay: () => void;
+  onMoveItem: (payload: CalendarMovePayload, toDate: string) => Promise<void>;
 }) {
   const start = startOfWeek(anchor, { weekStartsOn: 1 });
   const days: Date[] = [];
@@ -511,11 +617,33 @@ function WeekGrid({
         <div />
         {days.map((d) => {
           const today = isToday(d);
+          const headerKey = format(d, 'yyyy-MM-dd');
+          const isDropTarget = dragOverDay === headerKey;
           return (
             <button
               key={d.toISOString()}
               onClick={() => onPickDay(d)}
-              className={`px-2 py-2 text-center hover:bg-surface2 ${today ? 'bg-accent-light' : ''}`}
+              onDragOver={(ev) => {
+                if (readMove(ev.dataTransfer) || ev.dataTransfer.types.includes(CALENDAR_MOVE_MIME)) {
+                  ev.preventDefault();
+                  ev.dataTransfer.dropEffect = 'move';
+                  if (dragOverDay !== headerKey) onDragEnterDay(headerKey);
+                }
+              }}
+              onDragLeave={(ev) => {
+                if (ev.currentTarget.contains(ev.relatedTarget as Node | null)) return;
+                if (dragOverDay === headerKey) onDragLeaveDay();
+              }}
+              onDrop={async (ev) => {
+                const payload = readMove(ev.dataTransfer);
+                if (!payload) return;
+                ev.preventDefault();
+                await onMoveItem(payload, headerKey);
+              }}
+              className={`px-2 py-2 text-center transition ${
+                isDropTarget ? 'ring-2 ring-inset ring-accent !bg-accent-light' : 'hover:bg-surface2'
+              } ${today && !isDropTarget ? 'bg-accent-light' : ''}`}
+              title={isDropTarget ? 'Отпусти, чтобы перенести сюда' : undefined}
             >
               <div className="text-xs uppercase text-muted">{format(d, 'EEE', { locale: ru })}</div>
               <div
@@ -563,11 +691,22 @@ function WeekGrid({
                     return (
                       <div
                         key={t.id}
+                        draggable
+                        onDragStart={(ev) => {
+                          ev.stopPropagation();
+                          ev.dataTransfer.effectAllowed = 'move';
+                          ev.dataTransfer.setData(
+                            CALENDAR_MOVE_MIME,
+                            encodeMove({ kind: 'task', id: t.id, fromDate: dayKey })
+                          );
+                          markDragging(ev.currentTarget);
+                        }}
+                        onDragEnd={(ev) => clearDragging(ev.currentTarget)}
                         onClick={(ev) => {
                           ev.stopPropagation();
                           onClickTask(t.id);
                         }}
-                        className="absolute left-0.5 right-0.5 rounded text-[11px] px-1.5 py-0.5 cursor-pointer overflow-hidden hover:shadow-md transition z-10"
+                        className="absolute left-0.5 right-0.5 rounded text-[11px] px-1.5 py-0.5 cursor-grab active:cursor-grabbing overflow-hidden hover:shadow-md transition z-10"
                         style={{
                           top: `${(startMin / 60) * 48}px`,
                           height: `${heightPx}px`,
@@ -594,11 +733,22 @@ function WeekGrid({
                     return (
                       <div
                         key={e.id}
+                        draggable
+                        onDragStart={(ev) => {
+                          ev.stopPropagation();
+                          ev.dataTransfer.effectAllowed = 'move';
+                          ev.dataTransfer.setData(
+                            CALENDAR_MOVE_MIME,
+                            encodeMove({ kind: 'event', id: e.id, fromDate: e.date })
+                          );
+                          markDragging(ev.currentTarget);
+                        }}
+                        onDragEnd={(ev) => clearDragging(ev.currentTarget)}
                         onClick={(ev) => {
                           ev.stopPropagation();
                           onClickEvent(e);
                         }}
-                        className="absolute left-0.5 right-0.5 rounded text-[11px] px-1.5 py-0.5 cursor-pointer overflow-hidden hover:shadow-md transition z-10"
+                        className="absolute left-0.5 right-0.5 rounded text-[11px] px-1.5 py-0.5 cursor-grab active:cursor-grabbing overflow-hidden hover:shadow-md transition z-10"
                         style={{
                           top: `${(startMin / 60) * 48}px`,
                           height: `${heightPx}px`,

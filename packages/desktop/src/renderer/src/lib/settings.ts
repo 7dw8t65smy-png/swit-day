@@ -7,6 +7,8 @@ export interface AppSettings {
   // Profile
   user_name: string;
   start_page: string;
+  /** Whether the first-launch onboarding wizard has been completed/skipped. */
+  onboarded: boolean;
   confirm_delete: boolean;
   autostart: boolean;
   minimize_to_tray: boolean;
@@ -66,6 +68,7 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   user_name: '',
   start_page: '/today',
+  onboarded: false,
   confirm_delete: true,
   autostart: false,
   minimize_to_tray: true,
@@ -133,6 +136,7 @@ function decode(raw: Record<string, string>): AppSettings {
   return {
     user_name: get('user_name', DEFAULT_SETTINGS.user_name),
     start_page: get('start_page', DEFAULT_SETTINGS.start_page),
+    onboarded: bool('onboarded', DEFAULT_SETTINGS.onboarded),
     confirm_delete: bool('confirm_delete', DEFAULT_SETTINGS.confirm_delete),
     autostart: bool('autostart', DEFAULT_SETTINGS.autostart),
     minimize_to_tray: bool('minimize_to_tray', DEFAULT_SETTINGS.minimize_to_tray),

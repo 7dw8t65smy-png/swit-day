@@ -86,6 +86,54 @@ select.input { padding: 0 0.5rem; }
   animation: fadeIn 0.15s ease-out;
 }
 
+/* Появление модалок/оверлеев (онбординг, хоткеи): лёгкий fade + scale. */
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-pop-in {
+  animation: popIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Переход между страницами: fade + подъём. Только transform/opacity (GPU). */
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-page {
+  animation: pageEnter 0.18s ease-out;
+}
+
+/* <kbd> для оверлея горячих клавиш. */
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0 0.4rem;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+}
+
+/* Уважаем системную настройку «уменьшить движение»: гасим transform/анимации. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-page,
+  .animate-pop-in,
+  .animate-fade-in,
+  .animate-in.slide-in-from-right,
+  .streak-royal-pulse {
+    animation: none;
+  }
+}
+
 /* Анимация "королевского" стрика 100+ дней/недель/месяцев */
 @keyframes streakRoyalPulse {
   0%, 100% { box-shadow: 0 0 0 2px #fde68a inset, 0 0 8px rgba(251, 191, 36, 0.4); }
