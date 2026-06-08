@@ -151,6 +151,30 @@ export function setLayout(doc: MindMapDoc, layout: MindMapLayout): MindMapDoc {
   return { ...doc, layout };
 }
 
+export function setTheme(doc: MindMapDoc, theme: string): MindMapDoc {
+  if (doc.theme === theme) return doc;
+  return { ...doc, theme };
+}
+
+const MAX_TAGS = 12;
+
+/** Добавляет тег узлу: триммит, игнорирует пустые и дубликаты, ограничивает кол-во. */
+export function addTag(doc: MindMapDoc, id: string, raw: string): MindMapDoc {
+  const tag = raw.trim();
+  if (!tag) return doc;
+  const node = getNode(doc, id);
+  if (!node) return doc;
+  const tags = node.tags ?? [];
+  if (tags.includes(tag) || tags.length >= MAX_TAGS) return doc;
+  return updateNode(doc, id, { tags: [...tags, tag] });
+}
+
+export function removeTag(doc: MindMapDoc, id: string, tag: string): MindMapDoc {
+  const node = getNode(doc, id);
+  if (!node || !node.tags?.includes(tag)) return doc;
+  return updateNode(doc, id, { tags: node.tags.filter((t) => t !== tag) });
+}
+
 /** Узлы, видимые на холсте (не под свёрнутым предком). */
 export function visibleNodes(doc: MindMapDoc): MindMapNode[] {
   const hidden = new Set<string>();

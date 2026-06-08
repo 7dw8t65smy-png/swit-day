@@ -11,7 +11,10 @@ import {
   updateNode,
   toggleCollapse,
   moveNode,
-  visibleNodes
+  visibleNodes,
+  setTheme,
+  addTag,
+  removeTag
 } from './doc';
 
 // Дерево:  root → a → a1
@@ -129,5 +132,44 @@ describe('visibleNodes', () => {
   });
   it('показывает всё, когда ничего не свёрнуто', () => {
     expect(visibleNodes(tree())).toHaveLength(4);
+  });
+});
+
+describe('setTheme', () => {
+  it('иммутабельно задаёт тему', () => {
+    const doc = tree();
+    const next = setTheme(doc, 'aurora');
+    expect(next.theme).toBe('aurora');
+    expect(doc.theme).toBeUndefined();
+  });
+  it('возвращает тот же объект, если тема не изменилась (ноп)', () => {
+    const doc = setTheme(tree(), 'aurora');
+    expect(setTheme(doc, 'aurora')).toBe(doc);
+  });
+});
+
+describe('addTag / removeTag', () => {
+  it('addTag добавляет тег и триммит пробелы', () => {
+    const next = addTag(tree(), 'a', '  срочно ');
+    expect(next.nodes.find((n) => n.id === 'a')?.tags).toEqual(['срочно']);
+  });
+  it('addTag игнорирует пустые и дубликаты', () => {
+    const once = addTag(tree(), 'a', 'x');
+    expect(addTag(once, 'a', 'x')).toBe(once); // дубликат — ноп
+    expect(addTag(tree(), 'a', '   ')).toEqual(tree()); // пустой — без изменений
+  });
+  it('addTag не мутирует исходный документ', () => {
+    const doc = tree();
+    addTag(doc, 'a', 'тег');
+    expect(doc.nodes.find((n) => n.id === 'a')?.tags).toBeUndefined();
+  });
+  it('removeTag убирает тег', () => {
+    const withTags = addTag(addTag(tree(), 'a', 'one'), 'a', 'two');
+    const next = removeTag(withTags, 'a', 'one');
+    expect(next.nodes.find((n) => n.id === 'a')?.tags).toEqual(['two']);
+  });
+  it('removeTag — ноп, если тега нет', () => {
+    const doc = addTag(tree(), 'a', 'one');
+    expect(removeTag(doc, 'a', 'missing')).toBe(doc);
   });
 });

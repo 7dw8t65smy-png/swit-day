@@ -35,6 +35,9 @@ interface MindMapState {
   patchNode: (id: string, patch: Partial<Omit<MindMapNode, 'id' | 'parentId'>>) => void;
   toggleCollapse: (id: string) => void;
   setLayout: (layout: MindMapLayout) => void;
+  setTheme: (theme: string) => void;
+  addTag: (id: string, tag: string) => void;
+  removeTag: (id: string, tag: string) => void;
 
   undo: () => void;
   redo: () => void;
@@ -146,6 +149,9 @@ export const useMindMap = create<MindMapState>((set, get) => ({
   patchNode: (id, patch) => get().apply((d) => ops.updateNode(d, id, patch)),
   toggleCollapse: (id) => get().apply((d) => ops.toggleCollapse(d, id)),
   setLayout: (layout) => get().apply((d) => ops.setLayout(d, layout)),
+  setTheme: (theme) => get().apply((d) => ops.setTheme(d, theme)),
+  addTag: (id, tag) => get().apply((d) => ops.addTag(d, id, tag)),
+  removeTag: (id, tag) => get().apply((d) => ops.removeTag(d, id, tag)),
 
   undo: () => {
     const { past, doc, future } = get();

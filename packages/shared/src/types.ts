@@ -344,6 +344,9 @@ export interface DayTotals {
 /** Направление авто-раскладки от корня. */
 export type MindMapLayout = 'right' | 'left' | 'tree';
 
+/** Приоритет-маркер задачи на узле. */
+export type MindMapPriority = 'high' | 'medium' | 'low';
+
 export interface MindMapNode {
   id: string;
   /** null — корневой узел. */
@@ -353,15 +356,26 @@ export interface MindMapNode {
   color?: string | null;
   emoji?: string | null;
   note?: string | null;
+  /** Маркер приоритета (показывается значком на узле). */
+  priority?: MindMapPriority | null;
+  /** Узел-задача отмечен выполненным. */
+  done?: boolean;
+  /** Метки/теги узла. */
+  tags?: string[];
   /** Поддерево скрыто. */
   collapsed?: boolean;
 }
+
+/** Ключ визуальной темы карты (из THEMES в рендерере). */
+export type MindMapTheme = string;
 
 /** Документ карты целиком (хранится сериализованным в mind_maps.content). */
 export interface MindMapDoc {
   rootId: string;
   nodes: MindMapNode[];
   layout: MindMapLayout;
+  /** Ключ визуальной темы. Если не задан — тема по умолчанию. */
+  theme?: MindMapTheme;
 }
 
 /** Строка таблицы mind_maps (content — сериализованный MindMapDoc). */

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
@@ -22,13 +22,15 @@ import {
   Loader2,
   PanelRight,
   PanelLeft,
-  Network
+  Network,
+  SlidersHorizontal
 } from 'lucide-react';
 import type { MindMapDoc, MindMapLayout, MindMapNode } from '@swit/shared';
 import { useMindMap } from '../lib/mindmap/store';
 import { layoutMap } from '../lib/mindmap/layout';
 import { DEFAULT_BRANCH_COLORS } from '../lib/mindmap/doc';
 import MindNode, { type MindNodeData } from '../components/mindmap/MindNode';
+import Inspector from '../components/mindmap/Inspector';
 
 const nodeTypes = { mind: MindNode };
 const ROOT_COLOR = '#334155';
@@ -77,7 +79,11 @@ function buildView(doc: MindMapDoc, selectedId: string | null, editingId: string
       hasChildren: kids.length > 0,
       childCount: kids.length,
       horizontal,
-      editing: n.id === editingId
+      editing: n.id === editingId,
+      priority: n.priority ?? null,
+      done: n.done,
+      tags: n.tags,
+      hasNote: !!(n.note && n.note.trim())
     };
     nodes.push({ id: n.id, type: 'mind', position: p, selected: n.id === selectedId, data });
   };
@@ -120,6 +126,8 @@ export default function MapEditor(): JSX.Element {
   const saving = useMindMap((s) => s.saving);
   const canUndo = useMindMap((s) => s.past.length > 0);
   const canRedo = useMindMap((s) => s.future.length > 0);
+
+  const [inspectorOpen, setInspectorOpen] = useState(true);
 
   useEffect(() => {
     void useMindMap.getState().load(id);
@@ -249,48 +257,62 @@ export default function MapEditor(): JSX.Element {
             <Trash2 size={16} />
           </ToolbarBtn>
 
+          <span className="w-px h-5 bg-border mx-1" />
+
+          <ToolbarBtn
+            title="Панель свойств"
+            active={inspectorOpen}
+            onClick={() => setInspectorOpen((v) => !v)}
+          >
+            <SlidersHorizontal size={16} />
+          </ToolbarBtn>
+
           <span className="text-xs text-muted w-16 text-right tabular-nums">
             {saving ? 'Сохр…' : 'Сохранено'}
           </span>
         </div>
       </header>
 
-      <div className="relative flex-1">
-        {loading || !doc ? (
-          <div className="absolute inset-0 grid place-items-center text-muted">
-            <Loader2 className="animate-spin" />
-          </div>
-        ) : (
-          <ReactFlow
-            className="mind-canvas"
-            nodes={nodes}
-            edges={edges}
-            nodeTypes={nodeTypes}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onNodeClick={onNodeClick}
-            onNodeDoubleClick={onNodeDoubleClick}
-            onPaneClick={onPaneClick}
-            nodeOrigin={[0.5, 0.5]}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            onlyRenderVisibleElements
-            fitView
-            fitViewOptions={{ padding: 0.3, maxZoom: 1.1 }}
-            minZoom={0.2}
-            maxZoom={2}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background />
-            <Controls showInteractive={false} />
-            <MiniMap
-              pannable
-              zoomable
-              nodeColor={(n) => (n.data as { color?: string })?.color ?? '#94a3b8'}
-              maskColor="rgba(15,23,42,0.06)"
-            />
-          </ReactFlow>
-        )}
+      <div className="flex flex-1 min-h-0">
+        <div className="relative flex-1 min-w-0">
+          {loading || !doc ? (
+            <div className="absolute inset-0 grid place-items-center text-muted">
+              <Loader2 className="animate-spin" />
+            </div>
+          ) : (
+            <ReactFlow
+              className="mind-canvas"
+              nodes={nodes}
+              edges={edges}
+              nodeTypes={nodeTypes}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onNodeClick={onNodeClick}
+              onNodeDoubleClick={onNodeDoubleClick}
+              onPaneClick={onPaneClick}
+              nodeOrigin={[0.5, 0.5]}
+              nodesDraggable={false}
+              nodesConnectable={false}
+              onlyRenderVisibleElements
+              fitView
+              fitViewOptions={{ padding: 0.3, maxZoom: 1.1 }}
+              minZoom={0.2}
+              maxZoom={2}
+              proOptions={{ hideAttribution: true }}
+            >
+              <Background />
+              <Controls showInteractive={false} />
+              <MiniMap
+                pannable
+                zoomable
+                nodeColor={(n) => (n.data as { color?: string })?.color ?? '#94a3b8'}
+                maskColor="rgba(15,23,42,0.06)"
+              />
+            </ReactFlow>
+          )}
+        </div>
+
+        {inspectorOpen && <Inspector onClose={() => setInspectorOpen(false)} />}
       </div>
     </div>
   );
