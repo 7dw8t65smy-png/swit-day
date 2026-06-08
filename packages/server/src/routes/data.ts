@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from '../db.js';
+import { listBackups, createBackup } from '../backup.js';
 
 const TABLES = [
   {
@@ -235,6 +236,13 @@ export function registerData(app: FastifyInstance): void {
       db.pragma('foreign_keys = ON');
     }
     return { ok: true, counts };
+  });
+
+  app.get('/data/backups', () => listBackups());
+
+  app.post('/data/backup', async () => {
+    const file = await createBackup();
+    return { ok: true, file };
   });
 
   app.delete('/data', () => {

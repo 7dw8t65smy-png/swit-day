@@ -37,6 +37,13 @@ export interface DataImportResult {
   counts: Record<string, number>;
 }
 
+export interface BackupInfo {
+  file: string;
+  date: string;
+  size: number;
+  created_at: string;
+}
+
 async function url(): Promise<string> {
   if (baseUrl) return baseUrl;
   // Try localStorage override (set by Settings page after save).
@@ -79,6 +86,8 @@ export const api = {
   importData: (data: Record<string, unknown>) =>
     req<DataImportResult>('POST', '/data/import', data),
   resetData: () => req<DataImportResult>('DELETE', '/data'),
+  listBackups: () => req<BackupInfo[]>('GET', '/data/backups'),
+  createBackup: () => req<{ ok: true; file: string }>('POST', '/data/backup'),
 
   // projects
   listProjects: () => req<Project[]>('GET', '/projects'),

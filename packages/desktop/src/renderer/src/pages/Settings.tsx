@@ -20,7 +20,7 @@ import {
   Folder,
   type LucideIcon
 } from 'lucide-react';
-import { api, notify, resetApiUrl } from '../api';
+import { api, notify, resetApiUrl, type BackupInfo } from '../api';
 import type { Project } from '@swit/shared';
 import { PROJECT_PALETTE } from '../lib/palette';
 import { DEFAULT_SETTINGS, useSettings, type AppSettings } from '../lib/settings';
@@ -842,6 +842,25 @@ function DataPane({ onResetDefaults }: { onResetDefaults: () => Promise<void> })
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const [backups, setBackups] = useState<BackupInfo[]>([]);
+
+  useEffect(() => {
+    void api.listBackups().then(setBackups).catch(() => setBackups([]));
+  }, []);
+
+  async function backupNow(): Promise<void> {
+    setBusy(true);
+    setStatus(null);
+    try {
+      await api.createBackup();
+      setBackups(await api.listBackups());
+      setStatus('Резервная копия создана');
+    } catch (err) {
+      setStatus(`Не удалось создать копию: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function exportAll(): Promise<void> {
     setBusy(true);
@@ -935,6 +954,26 @@ function DataPane({ onResetDefaults }: { onResetDefaults: () => Promise<void> })
           </button>
         </div>
         {status && <div className="text-xs text-muted mt-2">{status}</div>}
+      </Section>
+
+      <Section
+        title="Резервные копии"
+        hint="Копия базы снимается автоматически раз в день при запуске. Хранятся последние 14."
+      >
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => void backupNow()}
+            disabled={busy}
+            className="px-4 h-10 rounded-md border border-border bg-surface text-sm hover:bg-surface2 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Save size={14} /> Создать копию сейчас
+          </button>
+          <span className="text-xs text-muted">
+            {backups.length > 0
+              ? `Последняя: ${backups[0].date} · всего копий: ${backups.length}`
+              : 'Копий пока нет'}
+          </span>
+        </div>
       </Section>
 
       <Section title="Хранилище">
