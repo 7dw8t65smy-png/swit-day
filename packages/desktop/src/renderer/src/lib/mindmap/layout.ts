@@ -17,7 +17,23 @@ export interface NodePos {
 export const LEVEL_GAP = 260;
 export const ROW_GAP = 76;
 
+const layoutCache = new WeakMap<MindMapDoc, Record<string, NodePos>>();
+
+/**
+ * Раскладка с мемоизацией по ссылке документа. Документы иммутабельны (любая
+ * правка создаёт новый объект), поэтому ссылка — корректный ключ кэша, а
+ * возвращаемый объект только читается. Дедуплицирует повторные вызовы из
+ * buildMind / findDropTarget / onNodeDragStop в пределах одного состояния.
+ */
 export function layoutMap(doc: MindMapDoc): Record<string, NodePos> {
+  const cached = layoutCache.get(doc);
+  if (cached) return cached;
+  const result = computeLayout(doc);
+  layoutCache.set(doc, result);
+  return result;
+}
+
+function computeLayout(doc: MindMapDoc): Record<string, NodePos> {
   const visibleList = visibleNodes(doc);
   if (!visibleList.some((n) => n.id === doc.rootId)) return {};
 

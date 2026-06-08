@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { nanoid } from 'nanoid';
-import { Plus, Copy, Trash2, Network, LayoutDashboard, Layers, Loader2 } from 'lucide-react';
+import {
+  Plus,
+  Copy,
+  Trash2,
+  Network,
+  LayoutDashboard,
+  Layers,
+  Loader2,
+  Search
+} from 'lucide-react';
 import type { Board, BoardDoc, Canvas, CanvasDoc, MindMap, MindMapDoc } from '@swit/shared';
 import { api } from '../api';
 import { pushToast } from '../hooks/useToasts';
@@ -115,6 +124,7 @@ export default function Canvases(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
+  const [query, setQuery] = useState('');
 
   async function load(): Promise<void> {
     try {
@@ -133,11 +143,20 @@ export default function Canvases(): JSX.Element {
     void load();
   }, []);
 
-  const items = useMemo(() => {
+  // Дорогая часть (JSON.parse + генерация SVG-превью) зависит только от данных:
+  // считаем один раз и не пересчитываем при смене фильтра/поиска.
+  const builtItems = useMemo(() => {
     const all = [...canvases.map(canvasItem), ...maps.map(mapItem), ...boards.map(boardItem)];
     all.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
-    return filter === 'all' ? all : all.filter((i) => i.kind === filter);
-  }, [canvases, maps, boards, filter]);
+    return all;
+  }, [canvases, maps, boards]);
+
+  const items = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return builtItems.filter(
+      (i) => (filter === 'all' || i.kind === filter) && (!q || i.title.toLowerCase().includes(q))
+    );
+  }, [builtItems, filter, query]);
 
   async function createCanvas(): Promise<void> {
     if (creating) return;
@@ -213,9 +232,23 @@ export default function Canvases(): JSX.Element {
           <div className="text-xs uppercase tracking-wide text-muted">
             Все {items.length > 0 && <span className="text-faint">· {items.length}</span>}
           </div>
-          <div className="inline-flex rounded-lg border border-border bg-surface p-0.5 gap-0.5">
-            {(['all', 'canvas', ...(hasLegacy ? (['map', 'board'] as const) : [])] as Filter[]).map(
-              (f) => (
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search
+                size={13}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint pointer-events-none"
+              />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Поиск…"
+                className="w-44 rounded-lg border border-border bg-surface pl-7 pr-2 py-1 text-xs outline-none focus:border-accent"
+              />
+            </div>
+            <div className="inline-flex rounded-lg border border-border bg-surface p-0.5 gap-0.5">
+              {(
+                ['all', 'canvas', ...(hasLegacy ? (['map', 'board'] as const) : [])] as Filter[]
+              ).map((f) => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
@@ -231,8 +264,8 @@ export default function Canvases(): JSX.Element {
                         ? 'Карты'
                         : 'Доски'}
                 </button>
-              )
-            )}
+              ))}
+            </div>
           </div>
         </div>
 

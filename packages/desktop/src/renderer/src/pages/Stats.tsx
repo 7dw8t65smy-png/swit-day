@@ -56,14 +56,18 @@ export default function Stats() {
     return new Date(2000, 0, 1);
   }, [period]);
 
-  const inPeriod = (dateStr: string): boolean => parseISO(dateStr) >= from;
-
   // На одну дату теперь может приходиться несколько записей в журнале;
   // сводим их в одну виртуальную «дневную сводку» для статистики.
   const journalByDate = useMemo(() => aggregateJournalByDate(journal), [journal]);
   const aggregatedJournal = useMemo(() => aggregatedJournalArray(journal), [journal]);
-  const periodJournal = aggregatedJournal.filter((j) => inPeriod(j.date));
-  const periodLogs = logs.filter((l) => inPeriod(l.date) && l.ended_at);
+  const periodJournal = useMemo(
+    () => aggregatedJournal.filter((j) => parseISO(j.date) >= from),
+    [aggregatedJournal, from]
+  );
+  const periodLogs = useMemo(
+    () => logs.filter((l) => parseISO(l.date) >= from && l.ended_at),
+    [logs, from]
+  );
 
   // Per-day work for bar chart
   const days = useMemo(() => {
@@ -94,10 +98,10 @@ export default function Stats() {
     }
     return [...totals.entries()]
       .map(([pid, s]) => ({
-        name: pid ? projectById.get(pid)?.name ?? 'Удалён' : 'Без проекта',
+        name: pid ? (projectById.get(pid)?.name ?? 'Удалён') : 'Без проекта',
         seconds: s,
         hours: Math.round((s / 3600) * 10) / 10,
-        color: pid ? projectById.get(pid)?.color ?? '#999' : '#6B7280'
+        color: pid ? (projectById.get(pid)?.color ?? '#999') : '#6B7280'
       }))
       .filter((x) => x.seconds > 0)
       .sort((a, b) => b.seconds - a.seconds);
@@ -153,7 +157,13 @@ export default function Stats() {
                 period === p ? 'bg-surface shadow-sm' : 'text-muted'
               }`}
             >
-              {p === 'week' ? 'Неделя' : p === 'month' ? 'Месяц' : p === 'quarter' ? 'Квартал' : 'Всё'}
+              {p === 'week'
+                ? 'Неделя'
+                : p === 'month'
+                  ? 'Месяц'
+                  : p === 'quarter'
+                    ? 'Квартал'
+                    : 'Всё'}
             </button>
           ))}
         </div>
@@ -163,7 +173,11 @@ export default function Stats() {
         <StatCard label="Всего работы" value={fmtHM(totalWork)} accent="work" />
         <StatCard label="В среднем за день" value={fmtHM(avgWork)} />
         <StatCard label="Задач завершено" value={String(totalTasks)} />
-        <StatCard label="Streak" value={`${streak} ${streak === 1 ? 'день' : 'дней'}`} accent="work" />
+        <StatCard
+          label="Streak"
+          value={`${streak} ${streak === 1 ? 'день' : 'дней'}`}
+          accent="work"
+        />
       </div>
 
       <section className="bg-surface rounded-lg shadow-sm p-4">
@@ -173,10 +187,7 @@ export default function Stats() {
             <BarChart data={days}>
               <XAxis dataKey="label" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip
-                formatter={(v: number) => [`${v} ч`, 'Работа']}
-                labelFormatter={(l) => l}
-              />
+              <Tooltip formatter={(v: number) => [`${v} ч`, 'Работа']} labelFormatter={(l) => l} />
               <Bar dataKey="work" fill="var(--color-work)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -201,13 +212,11 @@ export default function Stats() {
                     innerRadius={50}
                     outerRadius={90}
                   >
-                    {byProject.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} />
+                    {byProject.map((entry) => (
+                      <Cell key={entry.name} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip
-                    formatter={(v: number) => [fmtHM(v), 'Время']}
-                  />
+                  <Tooltip formatter={(v: number) => [fmtHM(v), 'Время']} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                 </PieChart>
               </ResponsiveContainer>
@@ -265,7 +274,9 @@ export default function Stats() {
                   <td className="py-2 pr-2 timer-font">{fmtHM(j.total_work_s ?? 0)}</td>
                   <td className="py-2 pr-2 timer-font text-muted">{fmtHM(j.total_pause_s ?? 0)}</td>
                   <td className="py-2 pr-2">{j.tasks_done ?? 0}</td>
-                  <td className="py-2">{j.mood ? ['', '😞', '😕', '😐', '🙂', '😄'][j.mood] : ''}</td>
+                  <td className="py-2">
+                    {j.mood ? ['', '😞', '😕', '😐', '🙂', '😄'][j.mood] : ''}
+                  </td>
                 </tr>
               ))}
               {periodJournal.length === 0 && (
@@ -283,15 +294,7 @@ export default function Stats() {
   );
 }
 
-function StatCard({
-  label,
-  value,
-  accent
-}: {
-  label: string;
-  value: string;
-  accent?: 'work';
-}) {
+function StatCard({ label, value, accent }: { label: string; value: string; accent?: 'work' }) {
   return (
     <div className="bg-surface rounded-lg shadow-sm p-4">
       <div className="text-xs uppercase text-muted">{label}</div>
@@ -314,20 +317,16 @@ function Ratio({ work, pause }: { work: number; pause: number }) {
         <div style={{ width: `${(pause / total) * 100}%`, background: 'var(--color-pause)' }} />
       </div>
       <div className="flex justify-between text-xs text-muted mt-1">
-        <span>Работа: {fmtHM(work)} ({Math.round((work / total) * 100)}%)</span>
+        <span>
+          Работа: {fmtHM(work)} ({Math.round((work / total) * 100)}%)
+        </span>
         <span>Паузы: {fmtHM(pause)}</span>
       </div>
     </>
   );
 }
 
-function Heatmap({
-  days,
-  max
-}: {
-  days: { date: string; work_s: number }[];
-  max: number;
-}) {
+function Heatmap({ days, max }: { days: { date: string; work_s: number }[]; max: number }) {
   // Group into weeks (columns). Each column is 7 days top-to-bottom.
   // Align to Monday-start.
   const first = parseISO(days[0].date);

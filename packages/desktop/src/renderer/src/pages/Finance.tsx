@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { Wallet } from 'lucide-react';
 import { api } from '../api';
 import type { ExpenseCategory, RecurringTransaction, Transaction } from '@swit/shared';
@@ -9,10 +9,13 @@ import { dedupCategories } from './finance/data';
 import PeriodSwitcher from './finance/PeriodSwitcher';
 import SummaryCard from './finance/SummaryCard';
 import TransactionsPane from './finance/TransactionsPane';
-import AnalyticsPane from './finance/AnalyticsPane';
 import BudgetsPane from './finance/BudgetsPane';
 import RecurringPane from './finance/RecurringPane';
 import CategoriesPane from './finance/CategoriesPane';
+
+// recharts (~800kB) живёт только в AnalyticsPane. Грузим вкладку аналитики
+// лениво, чтобы дефолтная вкладка «Транзакции» не тянула чарты при входе.
+const AnalyticsPane = lazy(() => import('./finance/AnalyticsPane'));
 
 // Module-level guard — prevents the default-category seed from running twice
 // when React StrictMode double-invokes useEffect in dev. Survives re-renders,
@@ -28,6 +31,10 @@ export default function Finance(): JSX.Element {
   const [customFrom, setCustomFrom] = useState(ymd(new Date()));
   const [customTo, setCustomTo] = useState(ymd(new Date()));
   const fmtm = useFmtMoney();
+  const activeRecurringCount = useMemo(
+    () => recurring.filter((r) => !r.archived).length,
+    [recurring]
+  );
 
   useEffect(() => {
     void reload();
@@ -166,7 +173,10 @@ export default function Finance(): JSX.Element {
           onChange={setPeriod}
           customFrom={customFrom}
           customTo={customTo}
-          onCustom={(f, t) => { setCustomFrom(f); setCustomTo(t); }}
+          onCustom={(f, t) => {
+            setCustomFrom(f);
+            setCustomTo(t);
+          }}
         />
 
         <nav className="mt-4 -mb-px flex gap-0 overflow-x-auto">
@@ -185,9 +195,9 @@ export default function Finance(): JSX.Element {
               >
                 <Icon size={14} />
                 {t.label}
-                {t.key === 'recurring' && recurring.filter((r) => !r.archived).length > 0 && (
+                {t.key === 'recurring' && activeRecurringCount > 0 && (
                   <span className="text-[10px] bg-surface2 text-faint rounded-full px-1.5 py-0.5">
-                    {recurring.filter((r) => !r.archived).length}
+                    {activeRecurringCount}
                   </span>
                 )}
               </button>
@@ -209,7 +219,13 @@ export default function Finance(): JSX.Element {
             />
           )}
           {tab === 'analytics' && (
-            <AnalyticsPane transactions={inRange} categories={categories} fmt={fmtm} />
+            <Suspense
+              fallback={
+                <div className="py-16 grid place-items-center text-muted text-sm">Загрузка…</div>
+              }
+            >
+              <AnalyticsPane transactions={inRange} categories={categories} fmt={fmtm} />
+            </Suspense>
           )}
           {tab === 'budgets' && (
             <BudgetsPane

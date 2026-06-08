@@ -177,9 +177,9 @@ export interface TransactionSummary {
 export interface Playbook {
   id: string;
   title: string;
-  description: string | null;    // короткий subtitle
-  content: string | null;        // полная документация, markdown
-  project_id: string | null;     // null = глобальный
+  description: string | null; // короткий subtitle
+  content: string | null; // полная документация, markdown
+  project_id: string | null; // null = глобальный
   icon: string | null;
   color: string | null;
   archived: number;
@@ -192,7 +192,7 @@ export interface PlaybookStep {
   id: string;
   playbook_id: string;
   title: string;
-  description: string | null;    // markdown
+  description: string | null; // markdown
   sort_order: number;
   created_at: string;
 }
@@ -204,9 +204,9 @@ export interface PlaybookWithSteps extends Playbook {
 export interface PlaybookRun {
   id: string;
   playbook_id: string;
-  playbook_title: string;        // snapshot
-  title: string;                 // e.g. "Нанять Петю"
-  content: string | null;        // snapshot документации
+  playbook_title: string; // snapshot
+  title: string; // e.g. "Нанять Петю"
+  content: string | null; // snapshot документации
   notes: string | null;
   started_at: string;
   completed_at: string | null;
@@ -217,9 +217,9 @@ export interface PlaybookRun {
 export interface PlaybookRunStep {
   id: string;
   run_id: string;
-  step_id: string;               // original template step id (may be deleted)
-  title: string;                 // snapshot
-  description: string | null;    // snapshot
+  step_id: string; // original template step id (may be deleted)
+  title: string; // snapshot
+  description: string | null; // snapshot
   sort_order: number;
   completed_at: string | null;
   notes: string | null;
@@ -242,12 +242,12 @@ export type HabitCadence =
   | 'weekly_n'
   | 'monthly_day'
   | 'weekdays' // legacy: Пн–Пт
-  | 'weekly';  // legacy: «раз в неделю»
+  | 'weekly'; // legacy: «раз в неделю»
 
 export interface HabitCadenceConfig {
-  weekdays?: number[];       // для specific_days, 0..6 (1 = понедельник, 0 = воскресенье)
-  times_per_week?: number;   // для weekly_n, 1..7
-  day_of_month?: number;     // для monthly_day, 1..31
+  weekdays?: number[]; // для specific_days, 0..6 (1 = понедельник, 0 = воскресенье)
+  times_per_week?: number; // для weekly_n, 1..7
+  day_of_month?: number; // для monthly_day, 1..31
 }
 
 export interface Habit {
@@ -258,9 +258,9 @@ export interface Habit {
   color: string | null;
   cadence: HabitCadence;
   cadence_config: string | null; // JSON-encoded HabitCadenceConfig
-  target_count: number;          // сколько раз надо в день (обычно 1)
-  remind_time: string | null;    // 'HH:MM' or null
-  confirm_window_h: number;      // окно подтверждения после remind_time, часы (default 6)
+  target_count: number; // сколько раз надо в день (обычно 1)
+  remind_time: string | null; // 'HH:MM' or null
+  confirm_window_h: number; // окно подтверждения после remind_time, часы (default 6)
   archived: number;
   sort_order: number;
   created_at: string;
@@ -272,7 +272,7 @@ export type HabitLogStatus = 'done' | 'missed';
 export interface HabitLog {
   id: string;
   habit_id: string;
-  date: string;                  // YYYY-MM-DD
+  date: string; // YYYY-MM-DD
   count: number;
   status: HabitLogStatus;
   note: string | null;
@@ -285,7 +285,7 @@ export interface HabitPeriodResult {
   id: string;
   habit_id: string;
   period_kind: HabitPeriodKind;
-  period_start: string;          // YYYY-MM-DD: понедельник недели или 1-е число месяца
+  period_start: string; // YYYY-MM-DD: понедельник недели или 1-е число месяца
   status: HabitLogStatus;
   count_actual: number;
   target: number;
@@ -330,9 +330,9 @@ export interface DaySegment {
 
 export interface DayTotals {
   date: string;
-  work_s: number;        // closed work sessions only
-  break_s: number;       // closed
-  pause_s: number;       // closed
+  work_s: number; // closed work sessions only
+  break_s: number; // closed
+  pause_s: number; // closed
   sessions_count: number;
   day_started_at: string | null;
   open_segment: { type: SessionType; started_at: string } | null;

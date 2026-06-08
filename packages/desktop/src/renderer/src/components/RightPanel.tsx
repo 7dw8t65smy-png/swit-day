@@ -36,7 +36,10 @@ export default function RightPanel() {
 
   useEffect(() => {
     void reload();
-    const id = window.setInterval(() => void reload(), 60_000);
+    // Не дёргаем сервер вхолостую, когда окно скрыто/свёрнуто.
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void reload();
+    }, 60_000);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchor]);
@@ -73,9 +76,7 @@ export default function RightPanel() {
         const dt = new Date(`${e.date}T${e.start_time}:00`);
         return dt >= now && dt <= limit;
       })
-      .sort((a, b) =>
-        `${a.date}T${a.start_time}`.localeCompare(`${b.date}T${b.start_time}`)
-      )[0];
+      .sort((a, b) => `${a.date}T${a.start_time}`.localeCompare(`${b.date}T${b.start_time}`))[0];
   }, [events]);
 
   const selectedKey = format(selected, 'yyyy-MM-dd');
@@ -197,14 +198,15 @@ export default function RightPanel() {
           setEditing(null);
         }}
         onSave={async (data) => {
-          const saved = editing && editing.id
-            ? await api.updateEvent(editing.id, data)
-            : await api.createEvent({
-                title: data.title!,
-                date: data.date ?? selectedKey,
-                start_time: data.start_time ?? undefined,
-                ...data
-              });
+          const saved =
+            editing && editing.id
+              ? await api.updateEvent(editing.id, data)
+              : await api.createEvent({
+                  title: data.title!,
+                  date: data.date ?? selectedKey,
+                  start_time: data.start_time ?? undefined,
+                  ...data
+                });
           await reload();
         }}
         onDelete={
@@ -308,12 +310,12 @@ function MiniCalendar({
               {format(day, 'd')}
               {hasEvents && (
                 <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-0.5">
-                  {evs.slice(0, 3).map((e, i) => (
+                  {evs.slice(0, 3).map((e) => (
                     <span
-                      key={i}
+                      key={e.id}
                       className="w-1 h-1 rounded-full"
                       style={{
-                        background: sel ? 'white' : e.color ?? 'var(--color-accent)'
+                        background: sel ? 'white' : (e.color ?? 'var(--color-accent)')
                       }}
                     />
                   ))}
@@ -366,7 +368,9 @@ function MiniBar({
               background: d.today ? 'var(--color-accent)' : 'var(--color-work)'
             }}
           />
-          <div className={`text-[10px] mt-0.5 ${d.today ? 'text-accent font-semibold' : 'text-faint'}`}>
+          <div
+            className={`text-[10px] mt-0.5 ${d.today ? 'text-accent font-semibold' : 'text-faint'}`}
+          >
             {d.label}
           </div>
         </div>
