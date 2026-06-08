@@ -33,6 +33,10 @@ function maxZ(doc: BoardDoc): number {
   return doc.elements.reduce((m, e) => Math.max(m, e.zIndex), 0);
 }
 
+function patchChanges<T extends object>(target: T, patch: Partial<T>): boolean {
+  return Object.entries(patch).some(([key, value]) => !Object.is(target[key as keyof T], value));
+}
+
 /** Базовый элемент заданного типа с дефолтными размером/стилем. */
 export function defaultElement(
   type: BoardElementType,
@@ -124,7 +128,9 @@ export function addConnector(
 ): BoardDoc {
   if (conn.from === conn.to) return doc;
   if (!getElement(doc, conn.from) || !getElement(doc, conn.to)) return doc;
-  if (doc.elements.some((e) => e.type === 'connector' && e.from === conn.from && e.to === conn.to)) {
+  if (
+    doc.elements.some((e) => e.type === 'connector' && e.from === conn.from && e.to === conn.to)
+  ) {
     return doc;
   }
   const element: BoardElement = {
@@ -151,6 +157,8 @@ export function updateElement(
   id: string,
   patch: Partial<Omit<BoardElement, 'id' | 'type' | 'style'>>
 ): BoardDoc {
+  const cur = getElement(doc, id);
+  if (!cur || !patchChanges(cur, patch)) return doc;
   return {
     ...doc,
     elements: doc.elements.map((e) => (e.id === id ? { ...e, ...patch } : e))
@@ -158,11 +166,13 @@ export function updateElement(
 }
 
 export function updateStyle(doc: BoardDoc, id: string, stylePatch: BoardElementStyle): BoardDoc {
+  const cur = getElement(doc, id);
+  if (!cur) return doc;
+  const nextStyle = { ...cur.style, ...stylePatch };
+  if (!patchChanges(cur.style ?? {}, nextStyle)) return doc;
   return {
     ...doc,
-    elements: doc.elements.map((e) =>
-      e.id === id ? { ...e, style: { ...e.style, ...stylePatch } } : e
-    )
+    elements: doc.elements.map((e) => (e.id === id ? { ...e, style: nextStyle } : e))
   };
 }
 
@@ -199,6 +209,7 @@ export function removeElements(doc: BoardDoc, ids: string[]): BoardDoc {
 export function bringToFront(doc: BoardDoc, ids: string[]): BoardDoc {
   const lift = new Set(ids);
   if (lift.size === 0) return doc;
+  if (!doc.elements.some((e) => lift.has(e.id))) return doc;
   let z = maxZ(doc);
   return {
     ...doc,
@@ -210,6 +221,7 @@ export function bringToFront(doc: BoardDoc, ids: string[]): BoardDoc {
 export function sendToBack(doc: BoardDoc, ids: string[]): BoardDoc {
   const sink = new Set(ids);
   if (sink.size === 0) return doc;
+  if (!doc.elements.some((e) => sink.has(e.id))) return doc;
   const minZ = doc.elements.reduce((m, e) => Math.min(m, e.zIndex), 0);
   let z = minZ;
   return {
@@ -221,11 +233,14 @@ export function sendToBack(doc: BoardDoc, ids: string[]): BoardDoc {
 export function group(doc: BoardDoc, ids: string[], groupId: string): BoardDoc {
   const set = new Set(ids);
   if (set.size < 2) return doc;
+  const existing = doc.elements.filter((e) => set.has(e.id));
+  if (existing.length < 2 || existing.every((e) => e.groupId === groupId)) return doc;
   return { ...doc, elements: doc.elements.map((e) => (set.has(e.id) ? { ...e, groupId } : e)) };
 }
 
 export function ungroup(doc: BoardDoc, ids: string[]): BoardDoc {
   const set = new Set(ids);
+  if (!doc.elements.some((e) => set.has(e.id) && e.groupId)) return doc;
   return {
     ...doc,
     elements: doc.elements.map((e) => (set.has(e.id) && e.groupId ? { ...e, groupId: null } : e))
@@ -272,10 +287,15 @@ export function alignElements(doc: BoardDoc, ids: string[], mode: AlignMode): Bo
         return { y: Math.round(cy - e.height / 2) };
     }
   };
-  return {
-    ...doc,
-    elements: doc.elements.map((e) => (idset.has(e.id) ? { ...e, ...place(e) } : e))
-  };
+  let changed = false;
+  const elements = doc.elements.map((e) => {
+    if (!idset.has(e.id)) return e;
+    const patch = place(e);
+    if (!patchChanges(e, patch)) return e;
+    changed = true;
+    return { ...e, ...patch };
+  });
+  return changed ? { ...doc, elements } : doc;
 }
 
 export function distributeElements(doc: BoardDoc, ids: string[], axis: 'h' | 'v'): BoardDoc {
@@ -297,14 +317,20 @@ export function distributeElements(doc: BoardDoc, ids: string[], axis: 'h' | 'v'
     newStart.set(e.id, Math.round(cursor));
     cursor += sizeOf(e) + gap;
   }
-  return {
-    ...doc,
-    elements: doc.elements.map((e) => {
-      const v = newStart.get(e.id);
-      if (v === undefined) return e;
-      return horizontal ? { ...e, x: v } : { ...e, y: v };
-    })
-  };
+  let changed = false;
+  const elements = doc.elements.map((e) => {
+    const v = newStart.get(e.id);
+    if (v === undefined) return e;
+    if (horizontal) {
+      if (e.x === v) return e;
+      changed = true;
+      return { ...e, x: v };
+    }
+    if (e.y === v) return e;
+    changed = true;
+    return { ...e, y: v };
+  });
+  return changed ? { ...doc, elements } : doc;
 }
 
 const TYPES: ReadonlySet<string> = new Set([
@@ -333,6 +359,24 @@ function normalizeStyle(value: unknown): BoardElementStyle {
   if (typeof s.fontSize === 'number') out.fontSize = s.fontSize;
   if (typeof s.shape === 'string' && SHAPES.has(s.shape)) out.shape = s.shape as BoardShapeKind;
   return out;
+}
+
+function normalizePoints(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const points: number[] = [];
+  for (let i = 0; i < value.length - 1; i += 2) {
+    const x = value[i];
+    const y = value[i + 1];
+    if (
+      typeof x === 'number' &&
+      Number.isFinite(x) &&
+      typeof y === 'number' &&
+      Number.isFinite(y)
+    ) {
+      points.push(x, y);
+    }
+  }
+  return points.length >= 4 ? points : undefined;
 }
 
 /**
@@ -367,7 +411,7 @@ export function normalizeBoardDoc(value: unknown): BoardDoc {
       from: typeof e.from === 'string' ? e.from : undefined,
       to: typeof e.to === 'string' ? e.to : undefined,
       src: typeof e.src === 'string' ? e.src : undefined,
-      points: Array.isArray(e.points) ? e.points.filter((n): n is number => typeof n === 'number') : undefined,
+      points: normalizePoints(e.points),
       groupId: typeof e.groupId === 'string' ? e.groupId : undefined
     });
   }

@@ -16,12 +16,22 @@ export interface BoardNodeData {
 
 const MIN_W = 40;
 const MIN_H = 28;
-const EDITABLE: ReadonlySet<BoardElementType> = new Set(['sticker', 'text', 'card', 'shape', 'frame']);
+const EDITABLE: ReadonlySet<BoardElementType> = new Set([
+  'sticker',
+  'text',
+  'card',
+  'shape',
+  'frame'
+]);
 
 function drawPath(points?: number[]): string {
   if (!points || points.length < 4) return '';
+  const len = points.length - (points.length % 2);
   let d = `M ${points[0] * 100} ${points[1] * 100}`;
-  for (let i = 2; i < points.length; i += 2) d += ` L ${points[i] * 100} ${points[i + 1] * 100}`;
+  for (let i = 2; i < len; i += 2) {
+    if (!Number.isFinite(points[i]) || !Number.isFinite(points[i + 1])) continue;
+    d += ` L ${points[i] * 100} ${points[i + 1] * 100}`;
+  }
   return d;
 }
 

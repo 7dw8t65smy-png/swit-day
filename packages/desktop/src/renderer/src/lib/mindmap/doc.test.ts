@@ -16,7 +16,9 @@ import {
   addTag,
   removeTag,
   reorderSibling,
-  expandTo
+  expandTo,
+  normalizeMindMapDoc,
+  promoteNode
 } from './doc';
 
 // Дерево:  root → a → a1
@@ -40,6 +42,51 @@ describe('createBlankDoc', () => {
     expect(doc.nodes).toHaveLength(1);
     expect(doc.nodes[0]).toMatchObject({ id: 'r', parentId: null, text: 'Идея' });
     expect(doc.rootId).toBe('r');
+    expect(doc.layout).toBe('right');
+  });
+});
+
+describe('normalizeMindMapDoc', () => {
+  it('создаёт безопасную пустую карту для невалидного значения', () => {
+    const doc = normalizeMindMapDoc(null, 'fallback');
+    expect(doc.rootId).toBe('fallback');
+    expect(doc.nodes).toEqual([{ id: 'fallback', parentId: null, text: 'Центральная идея' }]);
+  });
+
+  it('переподвешивает узлы с битым parentId к корню', () => {
+    const doc = normalizeMindMapDoc({
+      rootId: 'root',
+      layout: 'right',
+      nodes: [
+        { id: 'root', parentId: null, text: 'R' },
+        { id: 'orphan', parentId: 'missing', text: 'Lost' }
+      ]
+    });
+
+    expect(doc.nodes.find((n) => n.id === 'orphan')?.parentId).toBe('root');
+  });
+
+  it('разрывает циклы в parentId', () => {
+    const doc = normalizeMindMapDoc({
+      rootId: 'root',
+      layout: 'right',
+      nodes: [
+        { id: 'root', parentId: null, text: 'R' },
+        { id: 'a', parentId: 'b', text: 'A' },
+        { id: 'b', parentId: 'a', text: 'B' }
+      ]
+    });
+
+    expect(doc.nodes.find((n) => n.id === 'a')?.parentId).toBe('root');
+  });
+
+  it('возвращает раскладку right, если сохранённое значение неизвестно', () => {
+    const doc = normalizeMindMapDoc({
+      rootId: 'root',
+      layout: 'diagonal',
+      nodes: [{ id: 'root', parentId: null, text: 'R' }]
+    });
+
     expect(doc.layout).toBe('right');
   });
 });
@@ -98,6 +145,10 @@ describe('updateNode / toggleCollapse', () => {
     expect(next.nodes.find((n) => n.id === 'a')).toMatchObject({ text: 'AA', color: '#fff' });
     expect(doc.nodes.find((n) => n.id === 'a')?.text).toBe('A'); // не мутирован
   });
+  it('updateNode возвращает тот же объект, если значения не изменились', () => {
+    const doc = tree();
+    expect(updateNode(doc, 'a', { text: 'A' })).toBe(doc);
+  });
   it('toggleCollapse сворачивает узел с детьми', () => {
     expect(toggleCollapse(tree(), 'a').nodes.find((n) => n.id === 'a')?.collapsed).toBe(true);
   });
@@ -113,6 +164,15 @@ describe('moveNode', () => {
     const next = moveNode(tree(), 'a1', 'b');
     expect(next.nodes.find((n) => n.id === 'a1')?.parentId).toBe('b');
   });
+  it('не переносит узел под того же родителя', () => {
+    const doc = tree();
+    expect(moveNode(doc, 'a1', 'a')).toBe(doc);
+  });
+  it('раскрывает нового родителя при переносе', () => {
+    const doc = updateNode(tree(), 'b', { collapsed: true });
+    const next = moveNode(doc, 'a1', 'b');
+    expect(next.nodes.find((n) => n.id === 'b')?.collapsed).toBe(false);
+  });
   it('не переносит в собственное поддерево (защита от цикла)', () => {
     const next = moveNode(tree(), 'a', 'a1');
     expect(next.nodes.find((n) => n.id === 'a')?.parentId).toBe('root'); // без изменений
@@ -120,6 +180,20 @@ describe('moveNode', () => {
   it('корень не двигается', () => {
     const next = moveNode(tree(), 'root', 'a');
     expect(next.nodes.find((n) => n.id === 'root')?.parentId).toBeNull();
+  });
+});
+
+describe('promoteNode', () => {
+  it('поднимает узел на уровень выше', () => {
+    const next = promoteNode(tree(), 'a1');
+    expect(next.nodes.find((n) => n.id === 'a1')?.parentId).toBe('root');
+    expect(getChildren(next, 'root').map((n) => n.id)).toEqual(['a', 'a1', 'b']);
+  });
+
+  it('не трогает корень и детей корня', () => {
+    const doc = tree();
+    expect(promoteNode(doc, 'root')).toBe(doc);
+    expect(promoteNode(doc, 'a')).toBe(doc);
   });
 });
 

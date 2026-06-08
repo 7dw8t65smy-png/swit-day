@@ -12,15 +12,26 @@ const repoRoot = resolve(desktopRoot, '../..');
 const serverDist = resolve(desktopRoot, '../server/dist');
 const sharedDist = resolve(desktopRoot, '../shared/dist');
 const bundledServer = resolve(desktopRoot, 'out/server');
-const serverPkg = JSON.parse(
-  readFileSync(resolve(desktopRoot, '../server/package.json'), 'utf8')
-);
+const serverPkg = JSON.parse(readFileSync(resolve(desktopRoot, '../server/package.json'), 'utf8'));
 
 if (!existsSync(serverDist)) {
-  throw new Error(`Server build is missing: ${serverDist}. Run "npm run build --workspace=@swit/server" first.`);
+  throw new Error(
+    `Server build is missing: ${serverDist}. Run "npm run build --workspace=@swit/server" first.`
+  );
 }
 
-rmSync(bundledServer, { recursive: true, force: true });
+function rmSyncRetry(path) {
+  for (let i = 0; i < 3; i++) {
+    try {
+      rmSync(path, { recursive: true, force: true });
+      return;
+    } catch (err) {
+      if (i === 2 || err?.code !== 'ENOTEMPTY') throw err;
+    }
+  }
+}
+
+rmSyncRetry(bundledServer);
 mkdirSync(bundledServer, { recursive: true });
 
 // 1) JS сервера
@@ -51,10 +62,7 @@ required.delete('@swit/shared'); // копируется отдельно
 function copyDepWithTree(name, visited = new Set()) {
   if (visited.has(name)) return;
   visited.add(name);
-  const candidates = [
-    resolve(serverNodeModules, name),
-    resolve(rootNodeModules, name)
-  ];
+  const candidates = [resolve(serverNodeModules, name), resolve(rootNodeModules, name)];
   const src = candidates.find((p) => existsSync(p));
   if (!src) {
     console.warn(`[bundle-server] dep not found: ${name}`);
@@ -78,14 +86,14 @@ for (const name of required) copyDepWithTree(name);
 
 // 3) @swit/shared — копируем уже собранный dist + минимальный package.json.
 if (!existsSync(sharedDist)) {
-  throw new Error(`@swit/shared dist is missing: ${sharedDist}. Run "npm run build --workspace=@swit/shared" first.`);
+  throw new Error(
+    `@swit/shared dist is missing: ${sharedDist}. Run "npm run build --workspace=@swit/shared" first.`
+  );
 }
 const sharedTarget = resolve(targetNm, '@swit/shared');
 mkdirSync(sharedTarget, { recursive: true });
 cpSync(sharedDist, resolve(sharedTarget, 'dist'), { recursive: true });
-const sharedPkg = JSON.parse(
-  readFileSync(resolve(desktopRoot, '../shared/package.json'), 'utf8')
-);
+const sharedPkg = JSON.parse(readFileSync(resolve(desktopRoot, '../shared/package.json'), 'utf8'));
 writeFileSync(
   resolve(sharedTarget, 'package.json'),
   JSON.stringify(

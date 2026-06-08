@@ -36,7 +36,10 @@ interface BoardState {
   patchElement: (id: string, patch: Partial<Omit<BoardElement, 'id' | 'type' | 'style'>>) => void;
   styleSelected: (patch: BoardElementStyle) => void;
   moveElement: (id: string, x: number, y: number) => void;
-  resizeElement: (id: string, rect: { x: number; y: number; width: number; height: number }) => void;
+  resizeElement: (
+    id: string,
+    rect: { x: number; y: number; width: number; height: number }
+  ) => void;
   removeSelected: () => void;
   bringToFront: () => void;
   sendToBack: () => void;
@@ -77,6 +80,14 @@ function scheduleSave(get: () => BoardState, set: (p: Partial<BoardState>) => vo
   saveTimers.set(boardId, timer);
 }
 
+function parseStoredBoard(content: string): BoardDoc {
+  try {
+    return ops.normalizeBoardDoc(JSON.parse(content));
+  } catch {
+    return ops.createBlankBoard();
+  }
+}
+
 export const useBoard = create<BoardState>((set, get) => ({
   boardId: null,
   title: '',
@@ -92,7 +103,7 @@ export const useBoard = create<BoardState>((set, get) => ({
     set({ loading: true });
     try {
       const row = await api.getBoard(id);
-      const doc = ops.normalizeBoardDoc(JSON.parse(row.content));
+      const doc = parseStoredBoard(row.content);
       set({
         boardId: row.id,
         title: row.title,

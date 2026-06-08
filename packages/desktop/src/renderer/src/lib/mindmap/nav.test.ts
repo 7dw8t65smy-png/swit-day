@@ -81,4 +81,15 @@ describe('findDropTarget', () => {
     const doc = tree();
     expect(findDropTarget(doc, 'a1', { x: 99999, y: 99999 })).toBeNull();
   });
+  it('умеет искать цель по фактическим позициям после ручного drag', () => {
+    const doc = tree();
+    const pos = layoutMap(doc);
+    const livePos = {
+      ...pos,
+      b: { x: 900, y: 900 }
+    };
+
+    expect(findDropTarget(doc, 'a1', livePos.b, 130, livePos)).toBe('b');
+    expect(findDropTarget(doc, 'a1', pos.b, 130, livePos)).toBeNull();
+  });
 });

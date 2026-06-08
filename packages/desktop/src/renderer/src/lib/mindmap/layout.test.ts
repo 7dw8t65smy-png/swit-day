@@ -12,6 +12,11 @@ describe('layoutMap', () => {
     expect(pos.root).toEqual({ x: 0, y: 0 });
   });
 
+  it('не создаёт фантомную позицию, если rootId отсутствует в nodes', () => {
+    const pos = layoutMap(doc('right', [{ id: 'a', parentId: null, text: 'A' }]));
+    expect(pos).toEqual({});
+  });
+
   it('ребёнок справа на расстоянии LEVEL_GAP', () => {
     const pos = layoutMap(
       doc('right', [

@@ -27,7 +27,8 @@ import {
   Network,
   SlidersHorizontal,
   Search,
-  Crosshair
+  Crosshair,
+  Outdent
 } from 'lucide-react';
 import type { MindMapDoc, MindMapLayout, MindMapNode } from '@swit/shared';
 import { useMindMap } from '../lib/mindmap/store';
@@ -191,7 +192,8 @@ export default function MapEditor(): JSX.Element {
   }, [view.edges, setEdges]);
 
   const onNodeClick: NodeMouseHandler = (_e, node) => useMindMap.getState().select(node.id);
-  const onNodeDoubleClick: NodeMouseHandler = (_e, node) => useMindMap.getState().setEditing(node.id);
+  const onNodeDoubleClick: NodeMouseHandler = (_e, node) =>
+    useMindMap.getState().setEditing(node.id);
   const onPaneClick = (): void => {
     const s = useMindMap.getState();
     s.select(null);
@@ -206,7 +208,17 @@ export default function MapEditor(): JSX.Element {
       setNodes(view.nodes);
       return;
     }
-    const target = findDropTarget(s.doc, node.id, { x: node.position.x, y: node.position.y });
+    const currentPositions = Object.fromEntries(
+      (rfRef.current?.getNodes() ?? nodes).map((n) => [n.id, n.position])
+    );
+    currentPositions[node.id] = node.position;
+    const target = findDropTarget(
+      s.doc,
+      node.id,
+      { x: node.position.x, y: node.position.y },
+      undefined,
+      currentPositions
+    );
     if (target) {
       s.moveNode(node.id, target);
       s.select(node.id);
@@ -258,7 +270,8 @@ export default function MapEditor(): JSX.Element {
 
       if (e.key === 'Tab') {
         e.preventDefault();
-        s.addChild(sel);
+        if (e.shiftKey) s.promoteNode(sel);
+        else s.addChild(sel);
       } else if (e.key === 'Enter') {
         e.preventDefault();
         s.addSibling(sel);
@@ -279,6 +292,11 @@ export default function MapEditor(): JSX.Element {
   }, [focusSelected]);
 
   const rootSelected = !!doc && selectedId === doc.rootId;
+  const selectedNode = doc && selectedId ? doc.nodes.find((n) => n.id === selectedId) : null;
+  const selectedParent = selectedNode?.parentId
+    ? doc?.nodes.find((n) => n.id === selectedNode.parentId)
+    : null;
+  const canPromote = !!selectedNode?.parentId && !!selectedParent?.parentId;
 
   return (
     // h-screen (а не h-full): родитель страницы — min-h-full, поэтому height:100%
@@ -300,10 +318,18 @@ export default function MapEditor(): JSX.Element {
         />
 
         <div className="flex items-center gap-1 ml-auto">
-          <ToolbarBtn title="Отменить (⌘Z)" disabled={!canUndo} onClick={() => useMindMap.getState().undo()}>
+          <ToolbarBtn
+            title="Отменить (⌘Z)"
+            disabled={!canUndo}
+            onClick={() => useMindMap.getState().undo()}
+          >
             <Undo2 size={16} />
           </ToolbarBtn>
-          <ToolbarBtn title="Повторить (⌘⇧Z)" disabled={!canRedo} onClick={() => useMindMap.getState().redo()}>
+          <ToolbarBtn
+            title="Повторить (⌘⇧Z)"
+            disabled={!canRedo}
+            onClick={() => useMindMap.getState().redo()}
+          >
             <Redo2 size={16} />
           </ToolbarBtn>
 
@@ -330,6 +356,13 @@ export default function MapEditor(): JSX.Element {
             onClick={() => selectedId && useMindMap.getState().addChild(selectedId)}
           >
             <Plus size={16} />
+          </ToolbarBtn>
+          <ToolbarBtn
+            title="Повысить уровень (⇧Tab)"
+            disabled={!canPromote}
+            onClick={() => selectedId && useMindMap.getState().promoteNode(selectedId)}
+          >
+            <Outdent size={16} />
           </ToolbarBtn>
           <ToolbarBtn
             title="Удалить узел (Delete)"

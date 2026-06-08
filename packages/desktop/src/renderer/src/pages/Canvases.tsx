@@ -28,12 +28,13 @@ function mapSvg(doc: MindMapDoc): string {
 }
 
 function boardSvg(doc: BoardDoc): string | null {
-  if (doc.elements.length === 0) return null;
+  const boxes = doc.elements.filter((e) => e.type !== 'connector');
+  if (boxes.length === 0) return null;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  for (const e of doc.elements) {
+  for (const e of boxes) {
     minX = Math.min(minX, e.x);
     minY = Math.min(minY, e.y);
     maxX = Math.max(maxX, e.x + e.width);
@@ -42,14 +43,15 @@ function boardSvg(doc: BoardDoc): string | null {
   const pad = 24;
   const w = Math.round(maxX - minX + pad * 2);
   const h = Math.round(maxY - minY + pad * 2);
-  const rects = [...doc.elements]
+  const rects = [...boxes]
     .sort((a, b) => a.zIndex - b.zIndex)
     .map((e) => {
       const x = e.x - minX + pad;
       const y = e.y - minY + pad;
       const fill = e.style?.fill ?? '#ffffff';
       const stroke = e.style?.border ?? (e.style?.fill ? 'none' : '#cbd5e1');
-      const rx = e.type === 'shape' && e.style?.shape === 'ellipse' ? Math.min(e.width, e.height) / 2 : 12;
+      const rx =
+        e.type === 'shape' && e.style?.shape === 'ellipse' ? Math.min(e.width, e.height) / 2 : 12;
       return `<rect x="${x}" y="${y}" width="${e.width}" height="${e.height}" rx="${rx}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
     })
     .join('');
@@ -141,7 +143,10 @@ export default function Canvases(): JSX.Element {
     if (creating) return;
     setCreating(true);
     try {
-      const row = await api.createCanvas({ title: 'Новый холст', content: blankCanvasContent(nanoid()) });
+      const row = await api.createCanvas({
+        title: 'Новый холст',
+        content: blankCanvasContent(nanoid())
+      });
       nav(`/canvas/${row.id}`);
     } catch {
       pushToast({ kind: 'error', message: 'Не удалось создать холст' });
@@ -209,17 +214,25 @@ export default function Canvases(): JSX.Element {
             Все {items.length > 0 && <span className="text-faint">· {items.length}</span>}
           </div>
           <div className="inline-flex rounded-lg border border-border bg-surface p-0.5 gap-0.5">
-            {(['all', 'canvas', ...(hasLegacy ? (['map', 'board'] as const) : [])] as Filter[]).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition ${
-                  filter === f ? 'bg-accent text-white' : 'text-muted hover:text-ink'
-                }`}
-              >
-                {f === 'all' ? 'Все' : f === 'canvas' ? 'Холсты' : f === 'map' ? 'Карты' : 'Доски'}
-              </button>
-            ))}
+            {(['all', 'canvas', ...(hasLegacy ? (['map', 'board'] as const) : [])] as Filter[]).map(
+              (f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition ${
+                    filter === f ? 'bg-accent text-white' : 'text-muted hover:text-ink'
+                  }`}
+                >
+                  {f === 'all'
+                    ? 'Все'
+                    : f === 'canvas'
+                      ? 'Холсты'
+                      : f === 'map'
+                        ? 'Карты'
+                        : 'Доски'}
+                </button>
+              )
+            )}
           </div>
         </div>
 
@@ -271,7 +284,12 @@ function ItemCard({
     >
       <div className="relative h-28 bg-surface2 overflow-hidden grid place-items-center">
         {item.preview ? (
-          <img src={item.preview} alt="" className="w-full h-full object-contain p-2" draggable={false} />
+          <img
+            src={item.preview}
+            alt=""
+            className="w-full h-full object-contain p-2"
+            draggable={false}
+          />
         ) : (
           <Icon className="text-faint" size={22} />
         )}

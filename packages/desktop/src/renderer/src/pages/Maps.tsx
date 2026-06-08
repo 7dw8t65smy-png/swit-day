@@ -5,7 +5,7 @@ import { Plus, Copy, Trash2, Network, Loader2 } from 'lucide-react';
 import type { MindMap, MindMapDoc } from '@swit/shared';
 import { api } from '../api';
 import { pushToast } from '../hooks/useToasts';
-import { createBlankDoc, DEFAULT_BRANCH_COLORS } from '../lib/mindmap/doc';
+import { createBlankDoc, DEFAULT_BRANCH_COLORS, normalizeMindMapDoc } from '../lib/mindmap/doc';
 import { getTheme } from '../lib/mindmap/themes';
 import { toSvg } from '../lib/mindmap/exporters';
 
@@ -69,7 +69,7 @@ const TEMPLATES: Template[] = [
 
 function parseDoc(m: MindMap): MindMapDoc | null {
   try {
-    return JSON.parse(m.content) as MindMapDoc;
+    return normalizeMindMapDoc(JSON.parse(m.content), m.id);
   } catch {
     return null;
   }
@@ -231,7 +231,12 @@ function MapCard({
       {/* Мини-превью: настоящее дерево карты */}
       <div className="relative h-28 bg-surface2 overflow-hidden grid place-items-center">
         {previewSrc ? (
-          <img src={previewSrc} alt="" className="w-full h-full object-contain p-2" draggable={false} />
+          <img
+            src={previewSrc}
+            alt=""
+            className="w-full h-full object-contain p-2"
+            draggable={false}
+          />
         ) : (
           <Network className="text-faint" size={22} />
         )}

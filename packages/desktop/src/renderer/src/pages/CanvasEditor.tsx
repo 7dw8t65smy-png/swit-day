@@ -31,6 +31,7 @@ import {
   Network,
   Plus,
   CornerDownRight,
+  Outdent,
   StickyNote,
   Type as TypeIcon,
   Square,
@@ -41,13 +42,25 @@ import {
   Pencil,
   Grid3x3,
   Trash2,
-  SlidersHorizontal
+  SlidersHorizontal,
+  ListTree,
+  Focus,
+  CheckCircle2,
+  Flag,
+  Sparkle
 } from 'lucide-react';
-import type { BoardElementType, MindMapDoc, MindMapLayout, MindMapNode, BoardDoc } from '@swit/shared';
+import type {
+  BoardElementType,
+  MindMapDoc,
+  MindMapLayout,
+  MindMapNode,
+  BoardDoc
+} from '@swit/shared';
 import { useCanvasMeta } from '../lib/canvas/store';
 import { useMindMap } from '../lib/mindmap/store';
 import { useBoard } from '../lib/board/store';
 import { layoutMap } from '../lib/mindmap/layout';
+import { descendantIds, getChildren } from '../lib/mindmap/doc';
 import { navTarget, findDropTarget, type ArrowKey } from '../lib/mindmap/nav';
 import { getTheme, type MindMapThemeDef } from '../lib/mindmap/themes';
 import { moveElement as boardMove } from '../lib/board/doc';
@@ -141,7 +154,13 @@ function buildMind(
   const walk = (n: MindMapNode, color: string, depth: number): void => {
     push(n, color, depth);
     if (n.parentId && pos[n.id] && pos[n.parentId]) {
-      edges.push({ id: `${n.parentId}-${n.id}`, source: n.parentId, target: n.id, type: 'branch', data: { color, depth } });
+      edges.push({
+        id: `${n.parentId}-${n.id}`,
+        source: n.parentId,
+        target: n.id,
+        type: 'branch',
+        data: { color, depth }
+      });
     }
     if (n.collapsed) return;
     for (const k of children.get(n.id) ?? []) walk(k, k.color ?? color, depth + 1);
@@ -153,7 +172,11 @@ function buildMind(
   return { nodes, edges };
 }
 
-function buildBoard(doc: BoardDoc, sel: Set<string>, editingId: string | null): { nodes: Node[]; edges: Edge[] } {
+function buildBoard(
+  doc: BoardDoc,
+  sel: Set<string>,
+  editingId: string | null
+): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   for (const el of doc.elements) {
@@ -218,6 +241,8 @@ export default function CanvasEditor(): JSX.Element {
 
   const [snap, setSnap] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [outlineOpen, setOutlineOpen] = useState(true);
+  const [zenMode, setZenMode] = useState(false);
   const [mode, setMode] = useState<Mode>('select');
   const [pendingFrom, setPendingFrom] = useState<string | null>(null);
   const [previewPts, setPreviewPts] = useState<number[]>([]);
@@ -238,6 +263,7 @@ export default function CanvasEditor(): JSX.Element {
   useEffect(() => {
     setMode('select');
     setPendingFrom(null);
+    setZenMode(false);
   }, [id]);
 
   const theme = getTheme(mindDoc?.theme);
@@ -250,7 +276,17 @@ export default function CanvasEditor(): JSX.Element {
       ? buildBoard(boardDoc, new Set(boardSelectedIds), boardEditingId)
       : { nodes: [], edges: [] };
     return { nodes: [...mind.nodes, ...board.nodes], edges: [...mind.edges, ...board.edges] };
-  }, [mindDoc, boardDoc, theme, mindSelectedId, mindEditingId, boardSelectedIds, boardEditingId, originX, originY]);
+  }, [
+    mindDoc,
+    boardDoc,
+    theme,
+    mindSelectedId,
+    mindEditingId,
+    boardSelectedIds,
+    boardEditingId,
+    originX,
+    originY
+  ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -294,7 +330,9 @@ export default function CanvasEditor(): JSX.Element {
       }
     }
     if (boardMoves.length) {
-      useBoard.getState().apply((d) => boardMoves.reduce((acc, m) => boardMove(acc, m.id, m.x, m.y), d));
+      useBoard
+        .getState()
+        .apply((d) => boardMoves.reduce((acc, m) => boardMove(acc, m.id, m.x, m.y), d));
       changed = true;
     }
     if (!changed) setNodes(view.nodes); // ничего не поменялось → вернуть узлы карты на место
@@ -325,6 +363,23 @@ export default function CanvasEditor(): JSX.Element {
     useBoard.getState().addElement(type, Math.round(p.x - 90), Math.round(p.y - 60));
   }
 
+  function focusMindNode(nodeId = mindSelectedId ?? mindDoc?.rootId ?? null): void {
+    if (!nodeId || !mindDoc || !rfRef.current) return;
+    const ids = [nodeId, ...descendantIds(mindDoc, nodeId)].map((focusId) => ({ id: focusId }));
+    rfRef.current.fitView({ nodes: ids, duration: 450, padding: 0.35, maxZoom: 1.35 });
+  }
+
+  function selectMindNode(nodeId: string): void {
+    useBoard.getState().select([]);
+    useBoard.getState().setEditing(null);
+    useMindMap.getState().select(nodeId);
+  }
+
+  function addMindChild(nodeId: string): void {
+    useBoard.getState().select([]);
+    useMindMap.getState().addChild(nodeId);
+  }
+
   function onFile(e: React.ChangeEvent<HTMLInputElement>): void {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -332,7 +387,9 @@ export default function CanvasEditor(): JSX.Element {
     const reader = new FileReader();
     reader.onload = () => {
       const p = centerFlow();
-      useBoard.getState().addImage(String(reader.result), Math.round(p.x - 110), Math.round(p.y - 80));
+      useBoard
+        .getState()
+        .addImage(String(reader.result), Math.round(p.x - 110), Math.round(p.y - 80));
     };
     reader.readAsDataURL(file);
   }
@@ -383,7 +440,8 @@ export default function CanvasEditor(): JSX.Element {
     const h = Math.max(1, maxY - minY);
     if (w < 6 && h < 6) return;
     const points: number[] = [];
-    for (let i = 0; i < flow.length; i += 2) points.push((flow[i] - minX) / w, (flow[i + 1] - minY) / h);
+    for (let i = 0; i < flow.length; i += 2)
+      points.push((flow[i] - minX) / w, (flow[i + 1] - minY) / h);
     useBoard.getState().addDrawing({
       id: nanoid(),
       type: 'draw',
@@ -422,7 +480,19 @@ export default function CanvasEditor(): JSX.Element {
         else b.group();
         return;
       }
+      if (mod && e.key === '.') {
+        e.preventDefault();
+        const focusId = m.selectedId ?? m.doc?.rootId ?? null;
+        if (m.doc && focusId && rfRef.current) {
+          const ids = [focusId, ...descendantIds(m.doc, focusId)].map((focusNodeId) => ({
+            id: focusNodeId
+          }));
+          rfRef.current.fitView({ nodes: ids, duration: 450, padding: 0.35, maxZoom: 1.35 });
+        }
+        return;
+      }
       if (e.key === 'Escape') {
+        setZenMode(false);
         m.select(null);
         m.setEditing(null);
         b.select([]);
@@ -447,7 +517,8 @@ export default function CanvasEditor(): JSX.Element {
       const sel = m.selectedId as string;
       if (e.key === 'Tab') {
         e.preventDefault();
-        m.addChild(sel);
+        if (e.shiftKey) m.promoteNode(sel);
+        else m.addChild(sel);
       } else if (e.key === 'Enter') {
         e.preventDefault();
         m.addSibling(sel);
@@ -459,7 +530,8 @@ export default function CanvasEditor(): JSX.Element {
         const horizontal = m.doc.layout !== 'tree';
         const prev = horizontal ? 'ArrowUp' : 'ArrowLeft';
         const next = horizontal ? 'ArrowDown' : 'ArrowRight';
-        if (e.altKey && (e.key === prev || e.key === next)) m.reorderSibling(sel, e.key === prev ? -1 : 1);
+        if (e.altKey && (e.key === prev || e.key === next))
+          m.reorderSibling(sel, e.key === prev ? -1 : 1);
         else {
           const t = navTarget(m.doc, sel, e.key as ArrowKey);
           if (t) m.select(t);
@@ -473,100 +545,208 @@ export default function CanvasEditor(): JSX.Element {
   const canUndo = mindPast > 0 || boardPast > 0;
   const canRedo = mindFuture > 0 || boardFuture > 0;
   const rootSelected = !!mindDoc && mindSelectedId === mindDoc.rootId;
+  const selectedMindNode =
+    mindDoc && mindSelectedId ? mindDoc.nodes.find((n) => n.id === mindSelectedId) : null;
+  const selectedMindParent = selectedMindNode?.parentId
+    ? mindDoc?.nodes.find((n) => n.id === selectedMindNode.parentId)
+    : null;
+  const canPromote = !!selectedMindNode?.parentId && !!selectedMindParent?.parentId;
 
   const previewPath =
     previewPts.length >= 4
-      ? previewPts.reduce((acc, _v, i) => (i % 2 === 0 ? acc + `${i === 0 ? 'M' : 'L'} ${previewPts[i]} ${previewPts[i + 1]} ` : acc), '')
+      ? previewPts.reduce(
+          (acc, _v, i) =>
+            i % 2 === 0
+              ? acc + `${i === 0 ? 'M' : 'L'} ${previewPts[i]} ${previewPts[i + 1]} `
+              : acc,
+          ''
+        )
       : '';
 
   return (
-    <div className="flex flex-col h-screen">
-      <header className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-surface z-10">
-        <button onClick={() => nav('/canvas')} className="p-2 rounded-md hover:bg-surface2 text-muted hover:text-ink" title="К списку">
-          <ArrowLeft size={16} />
-        </button>
-        <input
-          value={title}
-          onChange={(e) => useCanvasMeta.getState().setTitle(e.target.value)}
-          placeholder="Без названия"
-          className="font-semibold text-base bg-transparent outline-none px-1 min-w-0 flex-1 max-w-[360px]"
-        />
-
-        <div className="flex items-center gap-1 ml-auto">
-          <Btn title="Отменить (⌘Z)" disabled={!canUndo} onClick={() => (boardPast > 0 && !mindSelectedId ? useBoard.getState().undo() : useMindMap.getState().undo())}>
-            <Undo2 size={16} />
-          </Btn>
-          <Btn title="Повторить (⌘⇧Z)" disabled={!canRedo} onClick={() => (boardFuture > 0 && !mindSelectedId ? useBoard.getState().redo() : useMindMap.getState().redo())}>
-            <Redo2 size={16} />
-          </Btn>
-
-          <span className="w-px h-5 bg-border mx-1" />
-
-          <Btn title="Дочерний узел (Tab)" disabled={!mindSelectedId} onClick={() => mindSelectedId && useMindMap.getState().addChild(mindSelectedId)}>
-            <Plus size={16} />
-          </Btn>
-          <Btn title="Соседний узел (Enter)" disabled={!mindSelectedId} onClick={() => mindSelectedId && useMindMap.getState().addSibling(mindSelectedId)}>
-            <CornerDownRight size={16} />
-          </Btn>
-          {LAYOUTS.map(({ value, icon: Icon, label }) => (
-            <Btn key={value} title={`Раскладка: ${label}`} active={mindDoc?.layout === value} onClick={() => useMindMap.getState().setLayout(value)}>
-              <Icon size={16} />
-            </Btn>
-          ))}
-          <ThemeMenu />
-
-          <span className="w-px h-5 bg-border mx-1" />
-
-          <Btn title="Привязка к сетке" active={snap} onClick={() => setSnap((v) => !v)}>
-            <Grid3x3 size={16} />
-          </Btn>
-          <Btn
-            title="Удалить выбранное (Delete)"
-            disabled={!mindSelectedId && boardSelectedIds.length === 0}
-            onClick={() => {
-              if (boardSelectedIds.length) useBoard.getState().removeSelected();
-              else if (mindSelectedId && !rootSelected) useMindMap.getState().removeNode(mindSelectedId);
-            }}
+    <div className={['flex flex-col h-screen', zenMode ? 'canvas-zen' : ''].join(' ')}>
+      {!zenMode && (
+        <header className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-surface z-10">
+          <button
+            onClick={() => nav('/canvas')}
+            className="p-2 rounded-md hover:bg-surface2 text-muted hover:text-ink"
+            title="К списку"
           >
-            <Trash2 size={16} />
-          </Btn>
-          <Btn title="Панель свойств" active={inspectorOpen} onClick={() => setInspectorOpen((v) => !v)}>
-            <SlidersHorizontal size={16} />
-          </Btn>
+            <ArrowLeft size={16} />
+          </button>
+          <input
+            value={title}
+            onChange={(e) => useCanvasMeta.getState().setTitle(e.target.value)}
+            placeholder="Без названия"
+            className="font-semibold text-base bg-transparent outline-none px-1 min-w-0 flex-1 max-w-[360px]"
+          />
 
-          <span className="text-xs text-muted w-16 text-right tabular-nums">{saving ? 'Сохр…' : 'Сохранено'}</span>
-        </div>
-      </header>
+          <div className="flex items-center gap-1 ml-auto">
+            <Btn
+              title="Отменить (⌘Z)"
+              disabled={!canUndo}
+              onClick={() =>
+                boardPast > 0 && !mindSelectedId
+                  ? useBoard.getState().undo()
+                  : useMindMap.getState().undo()
+              }
+            >
+              <Undo2 size={16} />
+            </Btn>
+            <Btn
+              title="Повторить (⌘⇧Z)"
+              disabled={!canRedo}
+              onClick={() =>
+                boardFuture > 0 && !mindSelectedId
+                  ? useBoard.getState().redo()
+                  : useMindMap.getState().redo()
+              }
+            >
+              <Redo2 size={16} />
+            </Btn>
+
+            <span className="w-px h-5 bg-border mx-1" />
+
+            <Btn title="Структура" active={outlineOpen} onClick={() => setOutlineOpen((v) => !v)}>
+              <ListTree size={16} />
+            </Btn>
+            <Btn
+              title="Фокус на ветке (⌘.)"
+              disabled={!mindSelectedId}
+              onClick={() => focusMindNode()}
+            >
+              <Focus size={16} />
+            </Btn>
+            <Btn title="ZEN" active={zenMode} onClick={() => setZenMode(true)}>
+              <Sparkle size={16} />
+            </Btn>
+
+            <span className="w-px h-5 bg-border mx-1" />
+
+            <Btn
+              title="Дочерний узел (Tab)"
+              disabled={!mindSelectedId}
+              onClick={() => mindSelectedId && useMindMap.getState().addChild(mindSelectedId)}
+            >
+              <Plus size={16} />
+            </Btn>
+            <Btn
+              title="Соседний узел (Enter)"
+              disabled={!mindSelectedId}
+              onClick={() => mindSelectedId && useMindMap.getState().addSibling(mindSelectedId)}
+            >
+              <CornerDownRight size={16} />
+            </Btn>
+            <Btn
+              title="Повысить уровень (⇧Tab)"
+              disabled={!canPromote}
+              onClick={() => mindSelectedId && useMindMap.getState().promoteNode(mindSelectedId)}
+            >
+              <Outdent size={16} />
+            </Btn>
+            {LAYOUTS.map(({ value, icon: Icon, label }) => (
+              <Btn
+                key={value}
+                title={`Раскладка: ${label}`}
+                active={mindDoc?.layout === value}
+                onClick={() => useMindMap.getState().setLayout(value)}
+              >
+                <Icon size={16} />
+              </Btn>
+            ))}
+            <ThemeMenu />
+
+            <span className="w-px h-5 bg-border mx-1" />
+
+            <Btn title="Привязка к сетке" active={snap} onClick={() => setSnap((v) => !v)}>
+              <Grid3x3 size={16} />
+            </Btn>
+            <Btn
+              title="Удалить выбранное (Delete)"
+              disabled={!mindSelectedId && boardSelectedIds.length === 0}
+              onClick={() => {
+                if (boardSelectedIds.length) useBoard.getState().removeSelected();
+                else if (mindSelectedId && !rootSelected)
+                  useMindMap.getState().removeNode(mindSelectedId);
+              }}
+            >
+              <Trash2 size={16} />
+            </Btn>
+            <Btn
+              title="Панель свойств"
+              active={inspectorOpen}
+              onClick={() => setInspectorOpen((v) => !v)}
+            >
+              <SlidersHorizontal size={16} />
+            </Btn>
+
+            <span className="text-xs text-muted w-16 text-right tabular-nums">
+              {saving ? 'Сохр…' : 'Сохранено'}
+            </span>
+          </div>
+        </header>
+      )}
 
       <div className="flex flex-1 min-h-0">
-        <div className="board-toolbar">
-          {BOARD_TOOLS.map(({ type, label, icon: Icon }) => (
-            <button key={type} className="board-tool" title={`Добавить: ${label}`} onClick={() => addBoardAtCenter(type)}>
-              <Icon size={18} />
-              <span className="board-tool__label">{label}</span>
+        {!zenMode && outlineOpen && mindDoc && (
+          <MindOutline
+            doc={mindDoc}
+            selectedId={mindSelectedId}
+            onSelect={selectMindNode}
+            onFocus={focusMindNode}
+            onAddChild={addMindChild}
+          />
+        )}
+
+        {!zenMode && (
+          <div className="board-toolbar">
+            {BOARD_TOOLS.map(({ type, label, icon: Icon }) => (
+              <button
+                key={type}
+                className="board-tool"
+                title={`Добавить: ${label}`}
+                onClick={() => addBoardAtCenter(type)}
+              >
+                <Icon size={18} />
+                <span className="board-tool__label">{label}</span>
+              </button>
+            ))}
+            <button
+              className="board-tool"
+              title="Картинка"
+              onClick={() => fileRef.current?.click()}
+            >
+              <ImageIcon size={18} />
+              <span className="board-tool__label">Картинка</span>
             </button>
-          ))}
-          <button className="board-tool" title="Картинка" onClick={() => fileRef.current?.click()}>
-            <ImageIcon size={18} />
-            <span className="board-tool__label">Картинка</span>
-          </button>
-          <button
-            className={['board-tool', mode === 'connect' ? 'board-tool--on' : ''].join(' ')}
-            title="Соединить два элемента доски"
-            onClick={() => {
-              setMode((mo) => (mo === 'connect' ? 'select' : 'connect'));
-              setPendingFrom(null);
-            }}
-          >
-            <Spline size={18} />
-            <span className="board-tool__label">Связь</span>
-          </button>
-          <button className={['board-tool', mode === 'draw' ? 'board-tool--on' : ''].join(' ')} title="Свободное рисование" onClick={() => setMode((mo) => (mo === 'draw' ? 'select' : 'draw'))}>
-            <Pencil size={18} />
-            <span className="board-tool__label">Перо</span>
-          </button>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
-        </div>
+            <button
+              className={['board-tool', mode === 'connect' ? 'board-tool--on' : ''].join(' ')}
+              title="Соединить два элемента доски"
+              onClick={() => {
+                setMode((mo) => (mo === 'connect' ? 'select' : 'connect'));
+                setPendingFrom(null);
+              }}
+            >
+              <Spline size={18} />
+              <span className="board-tool__label">Связь</span>
+            </button>
+            <button
+              className={['board-tool', mode === 'draw' ? 'board-tool--on' : ''].join(' ')}
+              title="Свободное рисование"
+              onClick={() => setMode((mo) => (mo === 'draw' ? 'select' : 'draw'))}
+            >
+              <Pencil size={18} />
+              <span className="board-tool__label">Перо</span>
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={onFile}
+            />
+          </div>
+        )}
 
         <div ref={wrapRef} className="relative flex-1 min-w-0">
           {loading || (!mindDoc && !boardDoc) ? (
@@ -615,19 +795,214 @@ export default function CanvasEditor(): JSX.Element {
           )}
 
           {mode === 'draw' && (
-            <div className="board-draw-layer" onPointerDown={onDrawDown} onPointerMove={onDrawMove} onPointerUp={onDrawUp} onPointerLeave={onDrawUp}>
+            <div
+              className="board-draw-layer"
+              onPointerDown={onDrawDown}
+              onPointerMove={onDrawMove}
+              onPointerUp={onDrawUp}
+              onPointerLeave={onDrawUp}
+            >
               {previewPath && (
                 <svg className="board-draw-preview">
-                  <path d={previewPath} fill="none" stroke={DRAW_COLOR} strokeWidth={2} strokeLinecap="round" />
+                  <path
+                    d={previewPath}
+                    fill="none"
+                    stroke={DRAW_COLOR}
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                  />
                 </svg>
               )}
             </div>
           )}
-          {mode === 'connect' && <div className="board-hint">{pendingFrom ? 'Выберите второй элемент' : 'Выберите первый элемент доски'} · Esc — отмена</div>}
+          {mode === 'connect' && (
+            <div className="board-hint">
+              {pendingFrom ? 'Выберите второй элемент' : 'Выберите первый элемент доски'} · Esc —
+              отмена
+            </div>
+          )}
+          {zenMode && (
+            <div className="canvas-zenbar">
+              <button className="canvas-zenbar__btn" onClick={() => setZenMode(false)}>
+                <Sparkle size={15} /> ZEN
+              </button>
+              <span>{saving ? 'Сохр…' : 'Сохранено'}</span>
+            </div>
+          )}
+          {!zenMode && selectedMindNode && (
+            <MindQuickBar
+              node={selectedMindNode}
+              onFocus={() => focusMindNode(selectedMindNode.id)}
+            />
+          )}
         </div>
 
-        {inspectorOpen && (activePanel === 'mind' ? <Inspector onClose={() => setInspectorOpen(false)} /> : <BoardInspector onClose={() => setInspectorOpen(false)} />)}
+        {!zenMode &&
+          inspectorOpen &&
+          (activePanel === 'mind' ? (
+            <Inspector onClose={() => setInspectorOpen(false)} />
+          ) : (
+            <BoardInspector onClose={() => setInspectorOpen(false)} />
+          ))}
       </div>
+    </div>
+  );
+}
+
+function MindOutline({
+  doc,
+  selectedId,
+  onSelect,
+  onFocus,
+  onAddChild
+}: {
+  doc: MindMapDoc;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onFocus: (id: string) => void;
+  onAddChild: (id: string) => void;
+}): JSX.Element {
+  const root = doc.nodes.find((n) => n.id === doc.rootId);
+  if (!root) return <aside className="canvas-outline" />;
+  return (
+    <aside className="canvas-outline">
+      <div className="canvas-outline__head">
+        <ListTree size={15} />
+        <span>Структура</span>
+      </div>
+      <div className="canvas-outline__tree">
+        <OutlineNode
+          doc={doc}
+          node={root}
+          depth={0}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          onFocus={onFocus}
+          onAddChild={onAddChild}
+        />
+      </div>
+    </aside>
+  );
+}
+
+function OutlineNode({
+  doc,
+  node,
+  depth,
+  selectedId,
+  onSelect,
+  onFocus,
+  onAddChild
+}: {
+  doc: MindMapDoc;
+  node: MindMapNode;
+  depth: number;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onFocus: (id: string) => void;
+  onAddChild: (id: string) => void;
+}): JSX.Element {
+  const children = getChildren(doc, node.id);
+  return (
+    <div>
+      <div
+        className={[
+          'canvas-outline__row',
+          selectedId === node.id ? 'canvas-outline__row--on' : ''
+        ].join(' ')}
+        style={{ paddingLeft: 10 + depth * 14 }}
+        onClick={() => onSelect(node.id)}
+        onDoubleClick={() => useMindMap.getState().setEditing(node.id)}
+      >
+        <span className="canvas-outline__bullet" />
+        <span className="canvas-outline__text">{node.text || 'Без названия'}</span>
+        {node.done ? <CheckCircle2 size={12} className="canvas-outline__mark" /> : null}
+        <button
+          className="canvas-outline__icon"
+          title="Фокус"
+          onClick={(e) => {
+            e.stopPropagation();
+            onFocus(node.id);
+          }}
+        >
+          <Focus size={12} />
+        </button>
+        <button
+          className="canvas-outline__icon"
+          title="Добавить"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAddChild(node.id);
+          }}
+        >
+          <Plus size={12} />
+        </button>
+      </div>
+      {!node.collapsed &&
+        children.map((child) => (
+          <OutlineNode
+            key={child.id}
+            doc={doc}
+            node={child}
+            depth={depth + 1}
+            selectedId={selectedId}
+            onSelect={onSelect}
+            onFocus={onFocus}
+            onAddChild={onAddChild}
+          />
+        ))}
+    </div>
+  );
+}
+
+function MindQuickBar({ node, onFocus }: { node: MindMapNode; onFocus: () => void }): JSX.Element {
+  const set = useMindMap.getState();
+  const prios = [
+    { value: 'high' as const, label: 'H', color: '#DC2626' },
+    { value: 'medium' as const, label: 'M', color: '#EA580C' },
+    { value: 'low' as const, label: 'L', color: '#0891B2' }
+  ];
+  return (
+    <div className="canvas-quickbar">
+      <button
+        title="Выполнено"
+        className={['canvas-quickbar__btn', node.done ? 'canvas-quickbar__btn--on' : ''].join(' ')}
+        onClick={() => set.patchNode(node.id, { done: !node.done })}
+      >
+        <CheckCircle2 size={14} />
+      </button>
+      {prios.map((p) => (
+        <button
+          key={p.value}
+          title={`Приоритет ${p.label}`}
+          className={[
+            'canvas-quickbar__btn',
+            node.priority === p.value ? 'canvas-quickbar__btn--on' : ''
+          ].join(' ')}
+          style={{ color: p.color }}
+          onClick={() =>
+            set.patchNode(node.id, { priority: node.priority === p.value ? null : p.value })
+          }
+        >
+          <Flag size={14} />
+        </button>
+      ))}
+      {['💡', '⭐', '🔥'].map((emoji) => (
+        <button
+          key={emoji}
+          title={emoji}
+          className={[
+            'canvas-quickbar__btn',
+            node.emoji === emoji ? 'canvas-quickbar__btn--on' : ''
+          ].join(' ')}
+          onClick={() => set.patchNode(node.id, { emoji: node.emoji === emoji ? null : emoji })}
+        >
+          {emoji}
+        </button>
+      ))}
+      <button title="Фокус" className="canvas-quickbar__btn" onClick={onFocus}>
+        <Focus size={14} />
+      </button>
     </div>
   );
 }

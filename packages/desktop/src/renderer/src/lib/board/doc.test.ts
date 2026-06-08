@@ -57,12 +57,22 @@ describe('updateElement / updateStyle', () => {
     expect(next.elements.find((e) => e.id === 'a')!.x).toBe(99);
     expect(doc.elements.find((e) => e.id === 'a')!.x).toBe(0);
   });
+  it('updateElement возвращает тот же объект, если ничего не изменилось', () => {
+    const doc = withTwo();
+    expect(updateElement(doc, 'a', { x: 0 })).toBe(doc);
+    expect(updateElement(doc, 'ghost', { x: 1 })).toBe(doc);
+  });
   it('updateStyle мёржит стиль, не затирая остальное', () => {
     const doc = withTwo();
     const next = updateStyle(doc, 'a', { fill: '#000000' });
     const el = next.elements.find((e) => e.id === 'a')!;
     expect(el.style?.fill).toBe('#000000');
     expect(el.style?.fontSize).toBeGreaterThan(0); // прежний fontSize сохранён
+  });
+  it('updateStyle возвращает тот же объект для пустого изменения', () => {
+    const doc = withTwo();
+    const fill = doc.elements.find((e) => e.id === 'a')?.style?.fill;
+    expect(updateStyle(doc, 'a', { fill })).toBe(doc);
   });
 });
 
@@ -73,6 +83,11 @@ describe('resizeElement', () => {
     const el = next.elements.find((e) => e.id === 'a')!;
     expect(el.width).toBeGreaterThanOrEqual(40);
     expect(el.height).toBeGreaterThanOrEqual(28);
+  });
+  it('не создаёт новую историю, если resize не меняет прямоугольник', () => {
+    const doc = withTwo();
+    const a = doc.elements.find((e) => e.id === 'a')!;
+    expect(resizeElement(doc, 'a', a)).toBe(doc);
   });
 });
 
@@ -101,6 +116,11 @@ describe('bringToFront / sendToBack', () => {
     const a = next.elements.find((e) => e.id === 'a')!;
     const b = next.elements.find((e) => e.id === 'b')!;
     expect(b.zIndex).toBeLessThan(a.zIndex);
+  });
+  it('не трогает документ, если выбранных элементов нет', () => {
+    const doc = withTwo();
+    expect(bringToFront(doc, ['ghost'])).toBe(doc);
+    expect(sendToBack(doc, ['ghost'])).toBe(doc);
   });
 });
 
@@ -131,6 +151,18 @@ describe('normalizeBoardDoc', () => {
       ]
     });
     expect(doc.elements.map((e) => e.id)).toEqual(['a']);
+  });
+  it('чистит точки свободного рисунка от мусора и нечётного хвоста', () => {
+    const doc = normalizeBoardDoc({
+      elements: [
+        {
+          id: 'd',
+          type: 'draw',
+          points: [0, 0, Number.NaN, 0.5, 1, 1, 2]
+        }
+      ]
+    });
+    expect(doc.elements[0].points).toEqual([0, 0, 1, 1]);
   });
 });
 
@@ -168,6 +200,11 @@ describe('group / ungroup / groupMembers', () => {
     const doc = withTwo();
     expect(group(doc, ['a'], 'g1')).toBe(doc);
   });
+  it('несуществующие элементы не создают пустую группу', () => {
+    const doc = withTwo();
+    expect(group(doc, ['a', 'ghost'], 'g1')).toBe(doc);
+    expect(ungroup(doc, ['a'])).toBe(doc);
+  });
 });
 
 describe('alignElements / distributeElements', () => {
@@ -195,5 +232,9 @@ describe('alignElements / distributeElements', () => {
   it('меньше трёх — distribute не трогает', () => {
     const doc = withTwo();
     expect(distributeElements(doc, ['a', 'b'], 'h')).toBe(doc);
+  });
+  it('align не создаёт новый документ, если позиции уже совпадают', () => {
+    const doc = alignElements(three(), ['a', 'b', 'c'], 'left');
+    expect(alignElements(doc, ['a', 'b', 'c'], 'left')).toBe(doc);
   });
 });

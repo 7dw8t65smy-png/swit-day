@@ -59,12 +59,12 @@ export function findDropTarget(
   doc: MindMapDoc,
   draggedId: string,
   point: NodePos,
-  threshold = DROP_THRESHOLD
+  threshold = DROP_THRESHOLD,
+  positions: Record<string, NodePos> = layoutMap(doc)
 ): string | null {
   const dragged = getNode(doc, draggedId);
   if (!dragged) return null;
 
-  const pos = layoutMap(doc);
   const banned = new Set<string>([draggedId, ...descendantIds(doc, draggedId)]);
   if (dragged.parentId) banned.add(dragged.parentId);
 
@@ -72,7 +72,7 @@ export function findDropTarget(
   let bestDist = threshold * threshold;
   for (const n of doc.nodes) {
     if (banned.has(n.id)) continue;
-    const p = pos[n.id];
+    const p = positions[n.id];
     if (!p) continue;
     const dx = p.x - point.x;
     const dy = p.y - point.y;

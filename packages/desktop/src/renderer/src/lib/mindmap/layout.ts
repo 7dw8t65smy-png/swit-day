@@ -1,5 +1,5 @@
 import type { MindMapDoc } from '@swit/shared';
-import { getChildren, visibleNodes } from './doc';
+import { visibleNodes } from './doc';
 
 // Чистая авто-раскладка дерева. Возвращает координаты каждого ВИДИМОГО узла
 // (свёрнутые поддеревья пропускаются).
@@ -18,7 +18,17 @@ export const LEVEL_GAP = 260;
 export const ROW_GAP = 76;
 
 export function layoutMap(doc: MindMapDoc): Record<string, NodePos> {
-  const visible = new Set(visibleNodes(doc).map((n) => n.id));
+  const visibleList = visibleNodes(doc);
+  if (!visibleList.some((n) => n.id === doc.rootId)) return {};
+
+  const visible = new Set(visibleList.map((n) => n.id));
+  const children = new Map<string, string[]>();
+  for (const n of visibleList) {
+    if (!n.parentId) continue;
+    const arr = children.get(n.parentId);
+    if (arr) arr.push(n.id);
+    else children.set(n.parentId, [n.id]);
+  }
   const pos: Record<string, NodePos> = {};
   const vertical = doc.layout === 'tree';
   const dir = doc.layout === 'left' ? -1 : 1;
@@ -26,9 +36,7 @@ export function layoutMap(doc: MindMapDoc): Record<string, NodePos> {
   let cursor = 0; // позиция вдоль поперечной оси (по дорожкам листьев)
 
   const childrenOf = (id: string): string[] =>
-    getChildren(doc, id)
-      .filter((c) => visible.has(c.id))
-      .map((c) => c.id);
+    children.get(id)?.filter((c) => visible.has(c)) ?? [];
 
   // Возвращает координату центра узла вдоль поперечной оси.
   const place = (id: string, depth: number): number => {

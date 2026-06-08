@@ -8,7 +8,7 @@ import * as ops from './doc';
 const SAVE_DEBOUNCE_MS = 600;
 const MAX_HISTORY = 120;
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
+const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 interface MindMapState {
   mapId: string | null;
@@ -40,6 +40,7 @@ interface MindMapState {
   removeTag: (id: string, tag: string) => void;
   reorderSibling: (id: string, dir: -1 | 1) => void;
   moveNode: (id: string, newParentId: string) => void;
+  promoteNode: (id: string) => void;
   /** Раскрывает предков узла и выделяет его (для перехода из поиска). */
   reveal: (id: string) => void;
 
@@ -48,21 +49,35 @@ interface MindMapState {
 }
 
 function scheduleSave(get: () => MindMapState, set: (p: Partial<MindMapState>) => void): void {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
+  const { mapId, doc, title } = get();
+  if (!mapId || !doc) return;
+
+  const old = saveTimers.get(mapId);
+  if (old) clearTimeout(old);
+
+  const timer = setTimeout(() => {
+    saveTimers.delete(mapId);
     void (async () => {
-      const { mapId, doc, title } = get();
-      if (!mapId || !doc) return;
-      set({ saving: true });
+      if (get().mapId === mapId) set({ saving: true });
       try {
         await api.updateMap(mapId, { title, content: JSON.stringify(doc) });
       } catch {
         pushToast({ kind: 'error', message: 'Не удалось сохранить карту' });
       } finally {
-        set({ saving: false });
+        if (get().mapId === mapId) set({ saving: false });
       }
     })();
   }, SAVE_DEBOUNCE_MS);
+
+  saveTimers.set(mapId, timer);
+}
+
+function parseStoredDoc(content: string, fallbackRootId: string): MindMapDoc {
+  try {
+    return ops.normalizeMindMapDoc(JSON.parse(content), fallbackRootId);
+  } catch {
+    return ops.createBlankDoc(fallbackRootId);
+  }
 }
 
 export const useMindMap = create<MindMapState>((set, get) => ({
@@ -80,7 +95,7 @@ export const useMindMap = create<MindMapState>((set, get) => ({
     set({ loading: true });
     try {
       const row = await api.getMap(id);
-      const doc = JSON.parse(row.content) as MindMapDoc;
+      const doc = parseStoredDoc(row.content, row.id);
       set({
         mapId: row.id,
         title: row.title,
@@ -158,6 +173,7 @@ export const useMindMap = create<MindMapState>((set, get) => ({
   removeTag: (id, tag) => get().apply((d) => ops.removeTag(d, id, tag)),
   reorderSibling: (id, dir) => get().apply((d) => ops.reorderSibling(d, id, dir)),
   moveNode: (id, newParentId) => get().apply((d) => ops.moveNode(d, id, newParentId)),
+  promoteNode: (id) => get().apply((d) => ops.promoteNode(d, id)),
   reveal: (id) => {
     get().apply((d) => ops.expandTo(d, id));
     set({ selectedId: id });
