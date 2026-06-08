@@ -239,6 +239,7 @@ export default function Today() {
           dayBreakSeconds={display.dayBreakSeconds}
           dayPauseSeconds={display.dayPauseSeconds}
           tasksDone={tasksDoneToday}
+          isAutoPause={timer.active?.type === 'pause' && timer.active?.notes === 'auto'}
           onStart={() => timer.start()}
           onPause={() => timer.pause()}
           onBreak={() => timer.startBreak()}

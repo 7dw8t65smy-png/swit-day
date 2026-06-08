@@ -10,6 +10,8 @@ interface Props {
   dayBreakSeconds: number;
   dayPauseSeconds: number;
   tasksDone: number;
+  /** Текущая пауза поставлена авто-паузой по простою (а не вручную). */
+  isAutoPause?: boolean;
   onStart: () => void;
   onPause: () => void;
   onBreak: () => void;
@@ -26,6 +28,7 @@ export default function DayTimer({
   dayBreakSeconds,
   dayPauseSeconds,
   tasksDone,
+  isAutoPause = false,
   onStart,
   onPause,
   onBreak,
@@ -136,7 +139,7 @@ export default function DayTimer({
       : status === 'running'
         ? `Сессия #${Math.max(1, workSessionNum)}`
         : status === 'paused'
-          ? `Пауза после сессии #${Math.max(1, workSessionNum)}`
+          ? `${isAutoPause ? 'Авто-пауза' : 'Пауза'} после сессии #${Math.max(1, workSessionNum)}`
           : 'Сессия';
 
   // How much the current session has added to today's total. Equals sessionSeconds when running work.
@@ -155,7 +158,10 @@ export default function DayTimer({
             <span className="text-muted">
               {status === 'running' &&
                 (workSessionNum > 1 ? 'Продолжаем рабочий день' : 'Идёт работа')}
-              {status === 'paused' && 'На паузе · нажми «Продолжить» когда готов'}
+              {status === 'paused' &&
+                (isAutoPause
+                  ? 'Авто-пауза · нет активности — двинь мышь или нажми клавишу, и работа продолжится'
+                  : 'На паузе · нажми «Продолжить» когда готов')}
               {status === 'on_break' && 'Перерыв'}
               {status === 'idle' && (hasAccum ? 'Готов продолжить' : 'День не запущен')}
             </span>
