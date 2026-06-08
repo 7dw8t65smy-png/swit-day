@@ -9,9 +9,8 @@ import RightPanel from './components/RightPanel';
 const Today = lazy(() => import('./pages/Today'));
 const Tasks = lazy(() => import('./pages/Tasks'));
 const Notes = lazy(() => import('./pages/Notes'));
-const Maps = lazy(() => import('./pages/Maps'));
+const Canvases = lazy(() => import('./pages/Canvases'));
 const MapEditor = lazy(() => import('./pages/MapEditor'));
-const Boards = lazy(() => import('./pages/Boards'));
 const BoardEditor = lazy(() => import('./pages/BoardEditor'));
 const Calendar = lazy(() => import('./pages/Calendar'));
 const Journal = lazy(() => import('./pages/Journal'));
@@ -152,9 +151,10 @@ export default function App() {
                 <Route path="/today" element={<Today />} />
                 <Route path="/tasks" element={<Tasks />} />
                 <Route path="/notes" element={<Notes />} />
-                <Route path="/maps" element={<Maps />} />
+                <Route path="/canvas" element={<Canvases />} />
+                <Route path="/maps" element={<Navigate to="/canvas" replace />} />
                 <Route path="/maps/:id" element={<MapEditor />} />
-                <Route path="/boards" element={<Boards />} />
+                <Route path="/boards" element={<Navigate to="/canvas" replace />} />
                 <Route path="/boards/:id" element={<BoardEditor />} />
                 <Route path="/calendar" element={<Calendar />} />
                 <Route path="/projects" element={<Navigate to="/tasks" replace />} />
