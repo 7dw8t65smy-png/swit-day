@@ -428,6 +428,16 @@ export interface BoardElement {
   zIndex: number;
   text?: string | null;
   style?: BoardElementStyle;
+  /** Коннектор: id элемента-источника. */
+  from?: string | null;
+  /** Коннектор: id элемента-цели. */
+  to?: string | null;
+  /** Изображение: data-URL картинки. */
+  src?: string | null;
+  /** Свободная линия: точки в локальных координатах bbox [x0,y0,x1,y1,...]. */
+  points?: number[];
+  /** Идентификатор группы (общий у сгруппированных элементов). */
+  groupId?: string | null;
 }
 
 /** Документ свободной доски целиком (сериализуется в boards.content). */

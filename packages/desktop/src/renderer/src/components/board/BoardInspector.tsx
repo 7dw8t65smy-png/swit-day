@@ -138,6 +138,55 @@ export default function BoardInspector({ onClose }: { onClose: () => void }): JS
           </button>
         </div>
       </Section>
+
+      {selected.length >= 2 && (
+        <Section icon={<Square size={13} />} label="Выравнивание">
+          <div className="board-align-grid">
+            <button className="board-step" title="По левому краю" onClick={() => set.align('left')}>
+              Слева
+            </button>
+            <button className="board-step" title="По центру (гор.)" onClick={() => set.align('centerX')}>
+              Центр
+            </button>
+            <button className="board-step" title="По правому краю" onClick={() => set.align('right')}>
+              Справа
+            </button>
+            <button className="board-step" title="По верху" onClick={() => set.align('top')}>
+              Верх
+            </button>
+            <button className="board-step" title="По центру (верт.)" onClick={() => set.align('centerY')}>
+              Сер.
+            </button>
+            <button className="board-step" title="По низу" onClick={() => set.align('bottom')}>
+              Низ
+            </button>
+          </div>
+          <div className="board-row mt-2">
+            <button
+              className="board-btn flex-1"
+              title="Равные промежутки по горизонтали (нужно ≥3)"
+              onClick={() => set.distribute('h')}
+            >
+              ↔ Распределить
+            </button>
+            <button
+              className="board-btn flex-1"
+              title="Равные промежутки по вертикали (нужно ≥3)"
+              onClick={() => set.distribute('v')}
+            >
+              ↕
+            </button>
+          </div>
+          <div className="board-row mt-2">
+            <button className="board-btn flex-1" onClick={() => set.group()}>
+              Сгруппировать
+            </button>
+            <button className="board-btn flex-1" onClick={() => set.ungroup()}>
+              Разгруппир.
+            </button>
+          </div>
+        </Section>
+      )}
     </aside>
   );
 }

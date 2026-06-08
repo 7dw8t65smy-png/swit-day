@@ -4,6 +4,7 @@ import type { BoardDoc, BoardElement, BoardElementStyle, BoardElementType } from
 import { api } from '../../api';
 import { pushToast } from '../../hooks/useToasts';
 import * as ops from './doc';
+import type { AlignMode } from './doc';
 
 const SAVE_DEBOUNCE_MS = 600;
 const MAX_HISTORY = 120;
@@ -39,6 +40,14 @@ interface BoardState {
   removeSelected: () => void;
   bringToFront: () => void;
   sendToBack: () => void;
+  addConnector: (from: string, to: string) => void;
+  addImage: (src: string, x: number, y: number) => string | null;
+  addDrawing: (el: Omit<BoardElement, 'zIndex'>) => string | null;
+  group: () => void;
+  ungroup: () => void;
+  align: (mode: AlignMode) => void;
+  distribute: (axis: 'h' | 'v') => void;
+  selectGroup: (id: string) => void;
 
   undo: () => void;
   redo: () => void;
@@ -168,6 +177,48 @@ export const useBoard = create<BoardState>((set, get) => ({
   sendToBack: () => {
     const ids = get().selectedIds;
     if (ids.length) get().apply((d) => ops.sendToBack(d, ids));
+  },
+
+  addConnector: (from, to) => {
+    if (!get().doc) return;
+    const id = nanoid();
+    get().apply((d) => ops.addConnector(d, { id, from, to }));
+  },
+  addImage: (src, x, y) => {
+    if (!get().doc) return null;
+    const id = nanoid();
+    get().apply((d) => ops.addElement(d, { ...ops.defaultElement('image', id, x, y), src }));
+    set({ selectedIds: [id], editingId: null });
+    return id;
+  },
+  addDrawing: (el) => {
+    if (!get().doc) return null;
+    get().apply((d) => ops.addElement(d, el));
+    set({ selectedIds: [el.id], editingId: null });
+    return el.id;
+  },
+  group: () => {
+    const ids = get().selectedIds;
+    if (ids.length < 2) return;
+    const gid = nanoid();
+    get().apply((d) => ops.group(d, ids, gid));
+  },
+  ungroup: () => {
+    const ids = get().selectedIds;
+    if (ids.length) get().apply((d) => ops.ungroup(d, ids));
+  },
+  align: (mode) => {
+    const ids = get().selectedIds;
+    if (ids.length >= 2) get().apply((d) => ops.alignElements(d, ids, mode));
+  },
+  distribute: (axis) => {
+    const ids = get().selectedIds;
+    if (ids.length >= 3) get().apply((d) => ops.distributeElements(d, ids, axis));
+  },
+  selectGroup: (id) => {
+    const d = get().doc;
+    if (!d) return;
+    set({ selectedIds: ops.groupMembers(d, id) });
   },
 
   undo: () => {

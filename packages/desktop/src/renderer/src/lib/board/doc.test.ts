@@ -10,7 +10,13 @@ import {
   removeElements,
   bringToFront,
   sendToBack,
-  normalizeBoardDoc
+  normalizeBoardDoc,
+  addConnector,
+  group,
+  ungroup,
+  groupMembers,
+  alignElements,
+  distributeElements
 } from './doc';
 
 function withTwo(): BoardDoc {
@@ -116,5 +122,78 @@ describe('normalizeBoardDoc', () => {
     const bad = doc.elements.find((e) => e.id === 'bad')!;
     expect(bad.type).toBe('sticker'); // неизвестный тип → дефолт
     expect(bad.width).toBeGreaterThanOrEqual(40); // отрицательная ширина исправлена
+  });
+  it('выбрасывает коннектор с несуществующими концами', () => {
+    const doc = normalizeBoardDoc({
+      elements: [
+        { id: 'a', type: 'sticker' },
+        { id: 'c', type: 'connector', from: 'a', to: 'ghost' }
+      ]
+    });
+    expect(doc.elements.map((e) => e.id)).toEqual(['a']);
+  });
+});
+
+describe('addConnector', () => {
+  it('создаёт коннектор между двумя элементами', () => {
+    const next = addConnector(withTwo(), { id: 'c1', from: 'a', to: 'b' });
+    const c = next.elements.find((e) => e.id === 'c1');
+    expect(c?.type).toBe('connector');
+    expect(c).toMatchObject({ from: 'a', to: 'b' });
+  });
+  it('отвергает петлю, несуществующие концы и дубли', () => {
+    const base = addConnector(withTwo(), { id: 'c1', from: 'a', to: 'b' });
+    expect(addConnector(withTwo(), { id: 'x', from: 'a', to: 'a' })).toEqual(withTwo()); // петля
+    expect(addConnector(withTwo(), { id: 'x', from: 'a', to: 'ghost' })).toEqual(withTwo()); // нет цели
+    expect(addConnector(base, { id: 'x', from: 'a', to: 'b' })).toBe(base); // дубль a→b
+  });
+});
+
+describe('removeElements убирает зависшие коннекторы', () => {
+  it('удаление элемента сносит связанные с ним коннекторы', () => {
+    const withConn = addConnector(withTwo(), { id: 'c1', from: 'a', to: 'b' });
+    const next = removeElements(withConn, ['a']);
+    expect(next.elements.map((e) => e.id).sort()).toEqual(['b']);
+  });
+});
+
+describe('group / ungroup / groupMembers', () => {
+  it('группирует выбранные и находит участников', () => {
+    const g = group(withTwo(), ['a', 'b'], 'g1');
+    expect(groupMembers(g, 'a').sort()).toEqual(['a', 'b']);
+    const u = ungroup(g, ['a']);
+    expect(groupMembers(u, 'b')).toEqual(['b']);
+  });
+  it('меньше двух элементов — не группирует', () => {
+    const doc = withTwo();
+    expect(group(doc, ['a'], 'g1')).toBe(doc);
+  });
+});
+
+describe('alignElements / distributeElements', () => {
+  function three(): import('@swit/shared').BoardDoc {
+    let d = createBlankBoard();
+    d = addElement(d, { ...defaultElement('sticker', 'a', 0, 0), width: 100, height: 100 });
+    d = addElement(d, { ...defaultElement('sticker', 'b', 200, 50), width: 100, height: 100 });
+    d = addElement(d, { ...defaultElement('sticker', 'c', 500, 80), width: 100, height: 100 });
+    return d;
+  }
+  it('align left ставит всем одинаковый x (минимальный)', () => {
+    const next = alignElements(three(), ['a', 'b', 'c'], 'left');
+    expect(next.elements.map((e) => e.x)).toEqual([0, 0, 0]);
+  });
+  it('distribute h даёт равные промежутки между краями', () => {
+    const next = distributeElements(three(), ['a', 'b', 'c'], 'h');
+    const byId = Object.fromEntries(next.elements.map((e) => [e.id, e]));
+    // первый и последний на месте, средний — посередине промежутка
+    expect(byId.a.x).toBe(0);
+    expect(byId.c.x).toBe(500);
+    const gap1 = byId.b.x - (byId.a.x + byId.a.width);
+    const gap2 = byId.c.x - (byId.b.x + byId.b.width);
+    expect(Math.abs(gap1 - gap2)).toBeLessThanOrEqual(1);
+  });
+  it('меньше трёх — distribute не трогает', () => {
+    const doc = withTwo();
+    expect(distributeElements(doc, ['a', 'b'], 'h')).toBe(doc);
   });
 });
