@@ -280,4 +280,17 @@ CREATE INDEX IF NOT EXISTS idx_tx_kind           ON transactions(kind);
 CREATE INDEX IF NOT EXISTS idx_tx_recurring      ON transactions(recurring_id);
 CREATE INDEX IF NOT EXISTS idx_pb_runs_pb        ON playbook_runs(playbook_id);
 CREATE INDEX IF NOT EXISTS idx_pb_run_steps_run  ON playbook_run_steps(run_id);
+
+-- Интеллект-карты. Весь документ карты (узлы, связи, раскладка, стили) хранится
+-- одним JSON в content — редактирование идёт целиком на холсте.
+CREATE TABLE IF NOT EXISTS mind_maps (
+  id           TEXT PRIMARY KEY,
+  title        TEXT NOT NULL,
+  content      TEXT NOT NULL,
+  theme        TEXT DEFAULT 'classic',
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_mind_maps_updated ON mind_maps(updated_at);
 `;

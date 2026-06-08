@@ -338,3 +338,38 @@ export interface DayTotals {
   open_segment: { type: SessionType; started_at: string } | null;
   segments: DaySegment[];
 }
+
+// --- Интеллект-карты (mind maps) ---
+
+/** Направление авто-раскладки от корня. */
+export type MindMapLayout = 'right' | 'left' | 'tree';
+
+export interface MindMapNode {
+  id: string;
+  /** null — корневой узел. */
+  parentId: string | null;
+  text: string;
+  /** Цвет ветки/узла (hex). Если не задан — наследуется от ветки. */
+  color?: string | null;
+  emoji?: string | null;
+  note?: string | null;
+  /** Поддерево скрыто. */
+  collapsed?: boolean;
+}
+
+/** Документ карты целиком (хранится сериализованным в mind_maps.content). */
+export interface MindMapDoc {
+  rootId: string;
+  nodes: MindMapNode[];
+  layout: MindMapLayout;
+}
+
+/** Строка таблицы mind_maps (content — сериализованный MindMapDoc). */
+export interface MindMap {
+  id: string;
+  title: string;
+  content: string;
+  theme: string;
+  created_at: string;
+  updated_at: string;
+}

@@ -147,6 +147,10 @@ const TABLES = [
   {
     name: 'transactions',
     columns: ['id', 'amount', 'kind', 'category_id', 'payment_method', 'date', 'description', 'note', 'recurring_id', 'created_at', 'updated_at']
+  },
+  {
+    name: 'mind_maps',
+    columns: ['id', 'title', 'content', 'theme', 'created_at', 'updated_at']
   }
 ] as const;
 
