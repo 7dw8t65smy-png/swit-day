@@ -22,16 +22,29 @@ export function registerSessions(app: FastifyInstance): void {
   });
 
   app.post<{
-    Body: { type: SessionType; task_id?: string | null; notes?: string | null; at?: string | null };
+    Body: {
+      type: SessionType;
+      task_id?: string | null;
+      notes?: string | null;
+      at?: string | null;
+      prev_ended_at?: string | null;
+    };
   }>('/sessions/start', (req) => {
-    // `at` позволяет бэкдейтить переход (авто-пауза по простою: работа должна
-    // закончиться в момент, когда пользователь перестал что-либо делать).
+    // `at`           — момент старта НОВОЙ сессии (по умолчанию «сейчас»).
+    // `prev_ended_at`— когда закрыть ПРЕДЫДУЩУЮ открытую сессию (по умолчанию = at).
+    // Раздельные метки нужны авто-паузе: работа должна закончиться там, где
+    // пользователь реально перестал что-либо делать, а сама пауза — стартовать
+    // «сейчас», чтобы её таймер шёл с 0:00. Минута простоя-порога между концом
+    // работы и началом паузы остаётся неучтённым промежутком.
     const t = normalizeAt(req.body.at) ?? nowIso();
-    // Закрываем открытые сессии в момент `t`, но не раньше их начала
+    const prevRaw = normalizeAt(req.body.prev_ended_at);
+    // Нельзя закрыть прошлую сессию позже старта новой.
+    const prevEnd = prevRaw !== null && Date.parse(prevRaw) < Date.parse(t) ? prevRaw : t;
+    // Закрываем открытые сессии в момент `prevEnd`, но не раньше их начала
     // (MAX по ISO-строкам = хронологический максимум).
     db.prepare(
       `UPDATE work_sessions SET ended_at = MAX(?, started_at) WHERE ended_at IS NULL`
-    ).run(t);
+    ).run(prevEnd);
     const id = nanoid();
     db.prepare(
       `INSERT INTO work_sessions (id, date, started_at, type, task_id, notes) VALUES (?, ?, ?, ?, ?, ?)`
