@@ -13,6 +13,8 @@ import Settings from './pages/Settings';
 import Playbooks from './pages/Playbooks';
 import Habits from './pages/Habits';
 import Finance from './pages/Finance';
+import CommandPalette from './components/CommandPalette';
+import { useCommandPalette } from './hooks/useCommandPalette';
 
 const NAV_KEYS = ['today', 'tasks', 'habits', 'notes', 'calendar', 'playbooks', 'journal', 'stats'];
 
@@ -56,6 +58,13 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
+      // Cmd+K / Ctrl+K — командная палитра. Работает даже из инпутов
+      // (preventDefault гасит дефолтные хоткеи браузера).
+      if (e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        useCommandPalette.getState().toggle();
+        return;
+      }
       const n = Number(e.key);
       if (n >= 1 && n <= 8) {
         e.preventDefault();
@@ -90,6 +99,7 @@ export default function App() {
           <RightPanel />
         </div>
       )}
+      <CommandPalette />
     </div>
   );
 }
