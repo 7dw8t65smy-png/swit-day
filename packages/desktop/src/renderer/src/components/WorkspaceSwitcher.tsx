@@ -8,13 +8,17 @@ import {
   Copy,
   LogOut,
   Loader2,
-  User as UserIcon
+  User as UserIcon,
+  Trash2,
+  DoorOpen,
+  ChevronLeft
 } from 'lucide-react';
+import type { WorkspaceMember } from '@swit/shared';
 import { useAuth } from '../lib/auth';
 import { authApi } from '../api';
 import { pushToast } from '../hooks/useToasts';
 
-type View = 'menu' | 'create' | 'join';
+type View = 'menu' | 'create' | 'join' | 'members';
 
 export default function WorkspaceSwitcher() {
   const status = useAuth((s) => s.status);
@@ -30,6 +34,7 @@ export default function WorkspaceSwitcher() {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
+  const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -97,6 +102,39 @@ export default function WorkspaceSwitcher() {
     }
   }
 
+  async function openMembers(): Promise<void> {
+    if (!active) return;
+    setView('members');
+    setMembers([]);
+    const res = await authApi.listMembers(active.id);
+    if (res.ok && res.data) setMembers(res.data);
+    else pushToast({ kind: 'error', message: res.error ?? 'Не удалось загрузить участников.' });
+  }
+
+  async function handleRemoveMember(userId: string): Promise<void> {
+    if (!active) return;
+    const res = await authApi.removeMember(active.id, userId);
+    if (!res.ok) {
+      pushToast({ kind: 'error', message: res.error ?? 'Не удалось убрать участника.' });
+      return;
+    }
+    setMembers((cur) => cur.filter((m) => m.user_id !== userId));
+  }
+
+  async function handleLeave(): Promise<void> {
+    if (!active) return;
+    const res = await authApi.leaveWorkspace(active.id);
+    if (!res.ok) {
+      pushToast({ kind: 'error', message: res.error ?? 'Не удалось покинуть команду.' });
+      return;
+    }
+    await refresh();
+    const personal = useAuth.getState().workspaces.find((w) => w.type === 'personal');
+    if (personal) await setActive(personal.id);
+    pushToast({ kind: 'info', message: `Вы покинули «${active.name}».` });
+    close();
+  }
+
   return (
     <div ref={ref} className="relative px-3 pb-3">
       <button
@@ -154,6 +192,9 @@ export default function WorkspaceSwitcher() {
                 {active?.type === 'team' && (
                   <MenuItem icon={Copy} label="Пригласить (скопировать код)" onClick={handleInvite} />
                 )}
+                {active?.type === 'team' && (
+                  <MenuItem icon={Users} label="Участники" onClick={openMembers} />
+                )}
               </div>
 
               <div className="border-t border-border py-1">
@@ -198,6 +239,47 @@ export default function WorkspaceSwitcher() {
               submitLabel="Войти"
               mono
             />
+          )}
+
+          {view === 'members' && (
+            <div className="py-1">
+              <button
+                onClick={() => setView('menu')}
+                className="flex w-full items-center gap-1.5 px-3 py-2 text-xs text-muted transition hover:text-ink"
+              >
+                <ChevronLeft size={13} /> Назад
+              </button>
+              <div className="max-h-56 overflow-y-auto">
+                {members.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-muted">Загрузка…</div>
+                )}
+                {members.map((m) => (
+                  <div key={m.user_id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                    <span className="min-w-0 flex-1 truncate text-ink">
+                      {m.display_name || m.handle}
+                      {m.user_id === user?.id && <span className="text-muted"> (вы)</span>}
+                    </span>
+                    <span className="shrink-0 text-[11px] text-muted">
+                      {m.role === 'owner' ? 'владелец' : 'участник'}
+                    </span>
+                    {active?.role === 'owner' && m.role !== 'owner' && (
+                      <button
+                        onClick={() => void handleRemoveMember(m.user_id)}
+                        className="shrink-0 text-muted transition hover:text-red-500"
+                        title="Убрать из команды"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {active?.role !== 'owner' && (
+                <div className="border-t border-border py-1">
+                  <MenuItem icon={DoorOpen} label="Покинуть команду" danger onClick={handleLeave} />
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}

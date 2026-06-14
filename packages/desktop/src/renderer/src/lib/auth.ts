@@ -30,7 +30,7 @@ function sessionBridge(): SessionBridge | null {
   return swit?.session ?? null;
 }
 
-const DEFAULT_URL = 'http://127.0.0.1:47821';
+const DEFAULT_URL = 'https://65-21-103-80.sslip.io';
 
 async function persist(token: string, workspaceId: string | null): Promise<void> {
   const { serverUrl } = getApiConfig();

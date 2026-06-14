@@ -37,7 +37,10 @@ import type {
 } from '@swit/shared';
 import { pushToast } from './hooks/useToasts';
 
-const DEFAULT_URL = 'http://127.0.0.1:47821';
+// Боевой сервер по умолчанию: приложение из коробки ходит на общий VPS,
+// поэтому другу не нужно вводить адрес вручную. При желании адрес можно
+// переопределить на экране входа или в Настройках (localStorage override).
+const DEFAULT_URL = 'https://65-21-103-80.sslip.io';
 
 let baseUrl = DEFAULT_URL;
 let bearer: string | null = null;
