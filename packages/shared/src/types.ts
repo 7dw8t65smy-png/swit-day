@@ -537,3 +537,145 @@ export interface AuthResult {
   user: User;
   workspaces: WorkspaceWithRole[];
 }
+
+// ===== Агентства (OnlyFans agency): модели, чаттеры, продажи, выплаты =====
+
+/** Смены чаттеров в МСК: утро 07–13, день 13–19, вечер 19–01, ночь 01–07. */
+export type AgencyShift = 'morning' | 'day' | 'evening' | 'night';
+
+/** Тип продажи из OnlyMonster. */
+export type AgencySaleKind = 'message' | 'tip' | 'post' | 'subscription' | 'other';
+
+/** Какие типы продаж идут в ЗП чаттеру (настройка агентства). */
+export interface AgencyPayoutKinds {
+  message: boolean;
+  tip: boolean;
+  post: boolean;
+  subscription: boolean;
+  other: boolean;
+}
+
+export interface Agency {
+  id: string;
+  name: string;
+  // Смещение часового пояса аккаунта OnlyMonster от UTC в минутах (UTC+5 = 300).
+  // Время вставленных продаж трактуется в этом поясе, смены считаются в МСК.
+  source_tz_offset: number;
+  // % по умолчанию для новых чаттеров (от NET).
+  default_percent: number;
+  // JSON AgencyPayoutKinds — какие типы продаж учитываются в ЗП.
+  payout_kinds: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgencyModel {
+  id: string;
+  agency_id: string;
+  name: string;
+  of_username: string | null;
+  active: number;
+  notes: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgencyChatter {
+  id: string;
+  agency_id: string;
+  name: string;
+  telegram: string | null;
+  experience: string | null;
+  trc20: string | null;
+  // Личный % (от NET). null → берётся default_percent агентства.
+  percent: number | null;
+  color: string | null;
+  active: number;
+  notes: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Закрепление: какой чаттер сидит на модели в конкретную смену. */
+export interface AgencyAssignment {
+  id: string;
+  agency_id: string;
+  model_id: string;
+  chatter_id: string;
+  shift: AgencyShift;
+  created_at: string;
+}
+
+/** Правило исключения продаж из ЗП по точной сумме (напр. приветственное сообщение). */
+export interface AgencyPayoutRule {
+  id: string;
+  agency_id: string;
+  // Ограничить тип продажи (null = любой тип).
+  match_kind: AgencySaleKind | null;
+  // Совпадение по gross-сумме (amount).
+  amount: number;
+  label: string | null;
+  active: number;
+  created_at: string;
+}
+
+export interface AgencySale {
+  id: string;
+  agency_id: string;
+  model_id: string;
+  // Чаттер, которому засчитана продажа (по смене). null = не определён.
+  chatter_id: string | null;
+  occurred_at: string; // ISO UTC
+  local_date: string; // YYYY-MM-DD в МСК
+  shift: AgencyShift | null;
+  amount: number;
+  fee: number;
+  net: number;
+  kind: AgencySaleKind;
+  fan_name: string | null;
+  // Идёт ли в ЗП чаттеру (с учётом типов и правил исключения).
+  counts_for_payout: number;
+  excluded_reason: string | null;
+  dedup_key: string;
+  raw_line: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Результат парсинга строки вставки OnlyMonster (до обработки сервером). */
+export interface ParsedSale {
+  // Человекочитаемое время как в OnlyMonster (для превью).
+  raw_datetime: string;
+  year: number;
+  month: number; // 1..12
+  day: number;
+  hour: number; // 0..23
+  minute: number;
+  amount: number;
+  fee: number;
+  net: number;
+  kind: AgencySaleKind;
+  fan_name: string | null;
+  raw_line: string;
+}
+
+/** Итог выплаты по одному чаттеру за период. */
+export interface AgencyPayoutRow {
+  chatter_id: string;
+  chatter_name: string;
+  trc20: string | null;
+  percent: number;
+  sales_count: number;
+  net_total: number;
+  payout: number;
+}
+
+/** Сводка выплат: по чаттерам + матрица «дата × чаттер». */
+export interface AgencyPayoutSummary {
+  rows: AgencyPayoutRow[];
+  by_date: { local_date: string; chatter_id: string | null; net: number }[];
+  net_total: number;
+  payout_total: number;
+}

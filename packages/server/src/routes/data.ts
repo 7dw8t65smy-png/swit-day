@@ -160,6 +160,37 @@ const TABLES = [
   {
     name: 'canvases',
     columns: ['id', 'title', 'content', 'created_at', 'updated_at']
+  },
+  {
+    name: 'agencies',
+    columns: ['id', 'name', 'source_tz_offset', 'default_percent', 'payout_kinds', 'created_at', 'updated_at']
+  },
+  {
+    name: 'agency_models',
+    columns: ['id', 'agency_id', 'name', 'of_username', 'active', 'notes', 'sort_order', 'created_at', 'updated_at']
+  },
+  {
+    name: 'agency_chatters',
+    columns: [
+      'id', 'agency_id', 'name', 'telegram', 'experience', 'trc20', 'percent',
+      'color', 'active', 'notes', 'sort_order', 'created_at', 'updated_at'
+    ]
+  },
+  {
+    name: 'agency_assignments',
+    columns: ['id', 'agency_id', 'model_id', 'chatter_id', 'shift', 'created_at']
+  },
+  {
+    name: 'agency_payout_rules',
+    columns: ['id', 'agency_id', 'match_kind', 'amount', 'label', 'active', 'created_at']
+  },
+  {
+    name: 'agency_sales',
+    columns: [
+      'id', 'agency_id', 'model_id', 'chatter_id', 'occurred_at', 'local_date', 'shift',
+      'amount', 'fee', 'net', 'kind', 'fan_name', 'counts_for_payout', 'excluded_reason',
+      'dedup_key', 'raw_line', 'created_at', 'updated_at'
+    ]
   }
 ] as const;
 

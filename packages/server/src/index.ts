@@ -17,6 +17,7 @@ import { registerData } from './routes/data.js';
 import { registerMaps } from './routes/maps.js';
 import { registerBoards } from './routes/boards.js';
 import { registerCanvases } from './routes/canvases.js';
+import { registerAgency } from './routes/agency.js';
 import { registerAuth } from './routes/auth.js';
 import { registerWorkspaces } from './routes/workspaces.js';
 import { resolveToken, memberRole } from './auth.js';
@@ -213,6 +214,7 @@ export async function startSwitServer(opts?: {
   registerMaps(app);
   registerBoards(app);
   registerCanvases(app);
+  registerAgency(app);
 
   // Раз в сутки снимаем копию БД до начала активной работы.
   await backupOnStartup();

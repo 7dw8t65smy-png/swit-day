@@ -33,7 +33,18 @@ import type {
   Workspace,
   WorkspaceWithRole,
   WorkspaceInvite,
-  WorkspaceMember
+  WorkspaceMember,
+  Agency,
+  AgencyModel,
+  AgencyChatter,
+  AgencyAssignment,
+  AgencyPayoutRule,
+  AgencyPayoutKinds,
+  AgencySale,
+  AgencySaleKind,
+  AgencyShift,
+  AgencyPayoutSummary,
+  ParsedSale
 } from '@swit/shared';
 import { pushToast } from './hooks/useToasts';
 
@@ -502,7 +513,111 @@ export const api = {
   updateRecurringTransaction: (id: string, b: Partial<RecurringTransaction>) =>
     req<RecurringTransaction>('PATCH', `/recurring-transactions/${id}`, b),
   deleteRecurringTransaction: (id: string) =>
-    req<{ ok: true }>('DELETE', `/recurring-transactions/${id}`)
+    req<{ ok: true }>('DELETE', `/recurring-transactions/${id}`),
+
+  // --- Агентства (чаттеры / модели / продажи / выплаты) ---
+  listAgencies: () => req<Agency[]>('GET', '/agency/agencies'),
+  createAgency: (b: {
+    name: string;
+    source_tz_offset?: number;
+    default_percent?: number;
+    payout_kinds?: AgencyPayoutKinds | null;
+  }) => req<Agency>('POST', '/agency/agencies', b),
+  updateAgency: (
+    id: string,
+    b: Partial<{
+      name: string;
+      source_tz_offset: number;
+      default_percent: number;
+      payout_kinds: AgencyPayoutKinds | null;
+    }>
+  ) => req<Agency>('PATCH', `/agency/agencies/${id}`, b),
+  deleteAgency: (id: string) => req<{ ok: true }>('DELETE', `/agency/agencies/${id}`),
+
+  agencyModels: (agencyId: string) =>
+    req<AgencyModel[]>('GET', `/agency/models?agency_id=${agencyId}`),
+  createAgencyModel: (b: { agency_id: string; name: string; of_username?: string | null; notes?: string | null }) =>
+    req<AgencyModel>('POST', '/agency/models', b),
+  updateAgencyModel: (id: string, b: Partial<AgencyModel>) =>
+    req<AgencyModel>('PATCH', `/agency/models/${id}`, b),
+  deleteAgencyModel: (id: string) => req<{ ok: true }>('DELETE', `/agency/models/${id}`),
+
+  agencyChatters: (agencyId: string) =>
+    req<AgencyChatter[]>('GET', `/agency/chatters?agency_id=${agencyId}`),
+  createAgencyChatter: (b: {
+    agency_id: string;
+    name: string;
+    telegram?: string | null;
+    experience?: string | null;
+    trc20?: string | null;
+    percent?: number | null;
+    color?: string | null;
+    notes?: string | null;
+  }) => req<AgencyChatter>('POST', '/agency/chatters', b),
+  updateAgencyChatter: (id: string, b: Partial<AgencyChatter>) =>
+    req<AgencyChatter>('PATCH', `/agency/chatters/${id}`, b),
+  deleteAgencyChatter: (id: string) => req<{ ok: true }>('DELETE', `/agency/chatters/${id}`),
+
+  agencyAssignments: (agencyId: string) =>
+    req<AgencyAssignment[]>('GET', `/agency/assignments?agency_id=${agencyId}`),
+  setAgencyAssignment: (b: {
+    agency_id: string;
+    model_id: string;
+    shift: AgencyShift;
+    chatter_id: string | null;
+  }) => req<{ ok: true }>('PUT', '/agency/assignments', b),
+
+  agencyPayoutRules: (agencyId: string) =>
+    req<AgencyPayoutRule[]>('GET', `/agency/payout-rules?agency_id=${agencyId}`),
+  createAgencyRule: (b: {
+    agency_id: string;
+    amount: number;
+    match_kind?: AgencySaleKind | null;
+    label?: string | null;
+  }) => req<AgencyPayoutRule>('POST', '/agency/payout-rules', b),
+  updateAgencyRule: (id: string, b: Partial<AgencyPayoutRule>) =>
+    req<AgencyPayoutRule>('PATCH', `/agency/payout-rules/${id}`, b),
+  deleteAgencyRule: (id: string) => req<{ ok: true }>('DELETE', `/agency/payout-rules/${id}`),
+
+  agencySales: (
+    q: {
+      agency_id?: string;
+      model_id?: string;
+      chatter_id?: string;
+      shift?: string;
+      kind?: string;
+      from?: string;
+      to?: string;
+      limit?: number;
+    } = {}
+  ) => {
+    const qs = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(q)
+          .filter(([, v]) => v !== undefined && v !== '')
+          .map(([k, v]) => [k, String(v)])
+      )
+    ).toString();
+    return req<AgencySale[]>('GET', `/agency/sales${qs ? `?${qs}` : ''}`);
+  },
+  importAgencySales: (b: { agency_id: string; model_id: string; sales: ParsedSale[] }) =>
+    req<{ ok: true; inserted: number; skipped: number; sales: AgencySale[] }>(
+      'POST',
+      '/agency/sales/import',
+      b
+    ),
+  updateAgencySale: (
+    id: string,
+    b: Partial<Pick<AgencySale, 'chatter_id' | 'counts_for_payout' | 'excluded_reason' | 'kind'>>
+  ) => req<AgencySale>('PATCH', `/agency/sales/${id}`, b),
+  deleteAgencySale: (id: string) => req<{ ok: true }>('DELETE', `/agency/sales/${id}`),
+
+  agencyPayouts: (q: { agency_id: string; from?: string; to?: string }) => {
+    const qs = new URLSearchParams(
+      Object.fromEntries(Object.entries(q).filter(([, v]) => v !== undefined && v !== ''))
+    ).toString();
+    return req<AgencyPayoutSummary>('GET', `/agency/payouts?${qs}`);
+  }
 };
 
 export function notify(title: string, body?: string): void {

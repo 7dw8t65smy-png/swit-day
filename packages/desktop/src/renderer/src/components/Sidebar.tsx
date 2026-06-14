@@ -13,7 +13,8 @@ import {
   Flame,
   Wallet,
   LayoutDashboard,
-  Bell
+  Bell,
+  Building2
 } from 'lucide-react';
 // FolderKanban kept available if a project section returns later
 import { useSettings } from '../lib/settings';
@@ -32,6 +33,7 @@ const items = [
   { to: '/reminders', label: 'Напоминания', icon: Bell },
   { to: '/playbooks', label: 'Регламенты', icon: ListChecks },
   { to: '/finance', label: 'Расходы', icon: Wallet },
+  { to: '/agency', label: 'Агентства', icon: Building2 },
   { to: '/journal', label: 'Журнал', icon: BookOpen },
   { to: '/stats', label: 'Статистика', icon: BarChart3 }
 ];

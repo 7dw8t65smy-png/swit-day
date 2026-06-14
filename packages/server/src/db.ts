@@ -98,7 +98,13 @@ export const WORKSPACE_TABLES = [
   'recurring_transactions',
   'mind_maps',
   'boards',
-  'canvases'
+  'canvases',
+  'agencies',
+  'agency_models',
+  'agency_chatters',
+  'agency_assignments',
+  'agency_payout_rules',
+  'agency_sales'
 ] as const;
 
 // Добавляет workspace_id ко всем контент-таблицам (и свежим, и старым). Колонка

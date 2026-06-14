@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   sort_order      INTEGER DEFAULT 0,
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL,
-  completed_at    TEXT
+  completed_at    TEXT,
+  assignee_id     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS work_sessions (
@@ -326,6 +327,7 @@ CREATE TABLE IF NOT EXISTS users (
   handle        TEXT NOT NULL UNIQUE,          -- ник или email в нижнем регистре
   display_name  TEXT NOT NULL,
   password_hash TEXT NOT NULL,                 -- scrypt: salt:hash (hex)
+  color         TEXT,                          -- цвет участника (hex) для подписи задач
   created_at    TEXT NOT NULL
 );
 
@@ -366,4 +368,100 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
   expires_at   TEXT                           -- NULL = бессрочно
 );
 CREATE INDEX IF NOT EXISTS idx_auth_sessions_token ON auth_sessions(token_hash);
+
+-- ===== Агентства (OnlyFans agency): модели, чаттеры, продажи, выплаты =====
+-- Все таблицы привязаны к пространству (workspace_id добавляется миграцией
+-- ensureWorkspaceColumns). Дочерние сущности дополнительно ссылаются на agency_id.
+
+CREATE TABLE IF NOT EXISTS agencies (
+  id                TEXT PRIMARY KEY,
+  name              TEXT NOT NULL,
+  -- Смещение пояса аккаунта OnlyMonster от UTC в минутах (UTC+5 = 300).
+  source_tz_offset  INTEGER NOT NULL DEFAULT 300,
+  -- % по умолчанию для новых чаттеров (от NET).
+  default_percent   REAL NOT NULL DEFAULT 5,
+  -- JSON AgencyPayoutKinds: какие типы продаж идут в ЗП.
+  payout_kinds      TEXT,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS agency_models (
+  id          TEXT PRIMARY KEY,
+  agency_id   TEXT NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  of_username TEXT,
+  active      INTEGER NOT NULL DEFAULT 1,
+  notes       TEXT,
+  sort_order  INTEGER DEFAULT 0,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agency_models_agency ON agency_models(agency_id);
+
+CREATE TABLE IF NOT EXISTS agency_chatters (
+  id          TEXT PRIMARY KEY,
+  agency_id   TEXT NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  telegram    TEXT,
+  experience  TEXT,
+  trc20       TEXT,
+  percent     REAL,            -- личный %, NULL → default_percent агентства
+  color       TEXT,
+  active      INTEGER NOT NULL DEFAULT 1,
+  notes       TEXT,
+  sort_order  INTEGER DEFAULT 0,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agency_chatters_agency ON agency_chatters(agency_id);
+
+CREATE TABLE IF NOT EXISTS agency_assignments (
+  id          TEXT PRIMARY KEY,
+  agency_id   TEXT NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
+  model_id    TEXT NOT NULL REFERENCES agency_models(id) ON DELETE CASCADE,
+  chatter_id  TEXT NOT NULL REFERENCES agency_chatters(id) ON DELETE CASCADE,
+  shift       TEXT NOT NULL,   -- 'morning'|'day'|'evening'|'night'
+  created_at  TEXT NOT NULL
+);
+-- На (модель, смена) ровно один чаттер.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agency_assign_slot
+  ON agency_assignments(model_id, shift);
+
+CREATE TABLE IF NOT EXISTS agency_payout_rules (
+  id          TEXT PRIMARY KEY,
+  agency_id   TEXT NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
+  match_kind  TEXT,            -- ограничить тип (NULL = любой)
+  amount      REAL NOT NULL,   -- gross-сумма для исключения из ЗП
+  label       TEXT,
+  active      INTEGER NOT NULL DEFAULT 1,
+  created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agency_rules_agency ON agency_payout_rules(agency_id);
+
+CREATE TABLE IF NOT EXISTS agency_sales (
+  id                TEXT PRIMARY KEY,
+  agency_id         TEXT NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
+  model_id          TEXT NOT NULL REFERENCES agency_models(id) ON DELETE CASCADE,
+  chatter_id        TEXT REFERENCES agency_chatters(id) ON DELETE SET NULL,
+  occurred_at       TEXT NOT NULL,   -- ISO UTC
+  local_date        TEXT NOT NULL,   -- YYYY-MM-DD в МСК
+  shift             TEXT,            -- смена в МСК
+  amount            REAL NOT NULL,
+  fee               REAL NOT NULL DEFAULT 0,
+  net               REAL NOT NULL,
+  kind              TEXT NOT NULL DEFAULT 'other',
+  fan_name          TEXT,
+  counts_for_payout INTEGER NOT NULL DEFAULT 1,
+  excluded_reason   TEXT,
+  dedup_key         TEXT NOT NULL,
+  raw_line          TEXT,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agency_sales_dedup
+  ON agency_sales(agency_id, dedup_key);
+CREATE INDEX IF NOT EXISTS idx_agency_sales_model   ON agency_sales(model_id);
+CREATE INDEX IF NOT EXISTS idx_agency_sales_chatter ON agency_sales(chatter_id);
+CREATE INDEX IF NOT EXISTS idx_agency_sales_date    ON agency_sales(local_date);
 `;
