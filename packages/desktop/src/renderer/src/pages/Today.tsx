@@ -18,6 +18,7 @@ import PinnedNotes from '../components/PinnedNotes';
 import TaskSuggestions from '../components/TaskSuggestions';
 import HabitChecklist from '../components/HabitChecklist';
 import { useSettings } from '../lib/settings';
+import { confirmDelete } from '../lib/confirm';
 
 export default function Today() {
   const defaultPriority = useSettings((s) => s.settings.default_priority);
@@ -220,6 +221,7 @@ export default function Today() {
                 <button
                   onClick={async (e) => {
                     e.stopPropagation();
+                    if (!confirmDelete(`Удалить задачу «${task.title}»?`)) return;
                     await api.deleteTask(task.id);
                     setTasks((cur) => cur.filter((x) => x.id !== task.id));
                   }}
