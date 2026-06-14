@@ -78,16 +78,16 @@ export default function SalesPanel() {
   }
 
   // Создать правило исключения по сумме + сразу исключить все загруженные продажи с этой суммой.
+  // Ярлык ставим автоматически (window.prompt в Electron не работает); переименовать
+  // или удалить правило можно в настройках агентства.
   async function makeRule(s: AgencySale): Promise<void> {
     if (!agencyId) return;
-    const label = prompt(`Ярлык правила для суммы $${s.amount.toFixed(2)} (напр. «Приветственное сообщение»):`, '');
-    if (label === null) return;
-    await api.createAgencyRule({ agency_id: agencyId, amount: s.amount, label: label.trim() || null });
+    if (!confirm(`Не учитывать в ЗП все продажи на сумму $${s.amount.toFixed(2)}? Будет создано правило исключения.`)) return;
+    const label = `Исключение $${s.amount.toFixed(2)}`;
+    await api.createAgencyRule({ agency_id: agencyId, amount: s.amount, label });
     const same = sales.filter((x) => Math.abs(x.amount - s.amount) < 0.005 && x.counts_for_payout);
     await Promise.all(
-      same.map((x) =>
-        api.updateAgencySale(x.id, { counts_for_payout: 0, excluded_reason: label.trim() || 'Исключено правилом' })
-      )
+      same.map((x) => api.updateAgencySale(x.id, { counts_for_payout: 0, excluded_reason: label }))
     );
     await reloadEntities(); // правила обновились
     await load();

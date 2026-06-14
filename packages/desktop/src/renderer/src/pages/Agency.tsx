@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Settings as Gear, Building2, Users, ClipboardList, Wallet } from 'lucide-react';
+import { Plus, Settings as Gear, Building2, Users, ClipboardList, Wallet, X } from 'lucide-react';
 import { api } from '../api';
 import { useAgencyStore } from '../lib/agency';
 import { useRealtimeRefetch } from '../hooks/useRealtimeRefetch';
@@ -26,43 +26,99 @@ export default function Agency() {
 
   const [tab, setTab] = useState<Tab>('models');
   const [showSettings, setShowSettings] = useState(false);
+  // Создание агентства — инлайн-поле (window.prompt в Electron не поддерживается).
+  const [showCreate, setShowCreate] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    void reloadAll();
+    void reloadAll().catch(() => {
+      /* ошибку уже озвучил api-слой; не плодим общий тост */
+    });
   }, [reloadAll]);
-  useRealtimeRefetch(() => void reloadAll());
+  useRealtimeRefetch(() => {
+    void reloadAll().catch(() => {});
+  });
 
   const selected = agencies.find((a) => a.id === selectedId) ?? null;
 
-  async function createAgency(): Promise<void> {
-    const name = prompt('Название агентства:', '');
-    if (name === null) return;
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    const a = await api.createAgency({ name: trimmed });
-    await reloadAll();
-    select(a.id);
+  function openCreate(): void {
+    setCreateName('');
+    setShowCreate(true);
+  }
+
+  async function submitCreate(): Promise<void> {
+    const name = createName.trim();
+    if (!name) return;
+    setCreating(true);
+    try {
+      const a = await api.createAgency({ name });
+      setCreateName('');
+      setShowCreate(false);
+      await reloadAll();
+      select(a.id);
+    } catch {
+      /* api-слой уже показал тост */
+    } finally {
+      setCreating(false);
+    }
   }
 
   return (
     <div className="px-6 py-5 max-w-[1200px] mx-auto">
-      <div className="flex items-center gap-3 mb-1">
-        <h1 className="text-2xl font-semibold text-ink">Агентства</h1>
-      </div>
+      <h1 className="text-2xl font-semibold text-ink mb-1">Агентства</h1>
       <p className="text-sm text-muted mb-5">Чаттеры, модели, продажи и выплаты — вместо Google-таблицы.</p>
 
-      {agencies.length === 0 ? (
-        <div className="border border-dashed border-border rounded-xl py-16 text-center">
-          <Building2 className="mx-auto text-faint mb-3" size={32} />
-          <div className="text-ink font-medium mb-1">Пока нет ни одного агентства</div>
-          <div className="text-sm text-muted mb-4">Создайте первое агентство, чтобы добавить модели и чаттеров.</div>
+      {/* Инлайн-форма создания агентства */}
+      {showCreate && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submitCreate();
+          }}
+          className="flex items-center gap-2 mb-4 max-w-md"
+        >
+          <input
+            autoFocus
+            value={createName}
+            onChange={(e) => setCreateName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setShowCreate(false);
+            }}
+            placeholder="Название агентства"
+            className="flex-1 h-10 px-3 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:border-accent"
+          />
           <button
-            onClick={() => void createAgency()}
-            className="bg-accent text-white px-4 h-10 rounded-md text-sm inline-flex items-center gap-1.5"
+            type="submit"
+            disabled={!createName.trim() || creating}
+            className="bg-accent text-white px-4 h-10 rounded-lg text-sm flex items-center gap-1.5 disabled:opacity-40"
           >
-            <Plus size={16} /> Новое агентство
+            <Plus size={16} /> Создать
           </button>
-        </div>
+          <button
+            type="button"
+            onClick={() => setShowCreate(false)}
+            className="text-faint hover:text-ink h-10 w-10 flex items-center justify-center"
+          >
+            <X size={18} />
+          </button>
+        </form>
+      )}
+
+      {agencies.length === 0 ? (
+        !showCreate && (
+          <div className="border border-dashed border-border rounded-xl py-16 text-center">
+            <Building2 className="mx-auto text-faint mb-3" size={32} />
+            <div className="text-ink font-medium mb-1">Пока нет ни одного агентства</div>
+            <div className="text-sm text-muted mb-4">Создайте первое агентство, чтобы добавить модели и чаттеров.</div>
+            <button
+              onClick={openCreate}
+              className="bg-accent text-white px-4 h-10 rounded-md text-sm inline-flex items-center gap-1.5"
+            >
+              <Plus size={16} /> Новое агентство
+            </button>
+          </div>
+        )
       ) : (
         <>
           {/* Селектор агентства + действия */}
@@ -77,7 +133,7 @@ export default function Agency() {
               ))}
             </select>
             <button
-              onClick={() => void createAgency()}
+              onClick={openCreate}
               className="h-10 px-3 rounded-lg border border-border bg-surface text-sm text-muted hover:text-ink flex items-center gap-1.5"
               title="Новое агентство"
             >
