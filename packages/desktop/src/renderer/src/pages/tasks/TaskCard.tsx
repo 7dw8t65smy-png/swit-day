@@ -4,6 +4,7 @@ import type { Task } from '@swit/shared';
 import { PRIORITY_COLOR } from '../../lib/priority';
 import PriorityBadge from '../../components/PriorityBadge';
 import DifficultyBadge from '../../components/DifficultyBadge';
+import { AssigneeBadge } from '../../components/AssigneeBadge';
 import { formatRelativeDue } from './dueDate';
 
 export function TaskCard({
@@ -34,7 +35,8 @@ export function TaskCard({
     !!due ||
     task.priority !== 'normal' ||
     (task.difficulty && task.difficulty !== 'medium') ||
-    (subtaskCount ?? 0) > 0;
+    (subtaskCount ?? 0) > 0 ||
+    !!task.assignee_id;
 
   return (
     <div
@@ -80,6 +82,7 @@ export function TaskCard({
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
               <DifficultyBadge difficulty={task.difficulty ?? 'medium'} />
               <PriorityBadge priority={task.priority} />
+              <AssigneeBadge assigneeId={task.assignee_id} compact />
               {subtaskCount !== undefined && subtaskCount > 0 && (
                 <span
                   className="text-[10px] text-muted flex items-center gap-0.5"

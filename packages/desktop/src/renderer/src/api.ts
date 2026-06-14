@@ -263,6 +263,7 @@ export const api = {
     parent_task_id?: string | null;
     priority?: 'low' | 'normal' | 'high' | 'urgent';
     difficulty?: 'easy' | 'medium' | 'hard';
+    assignee_id?: string | null;
   }) => req<Task>('POST', '/tasks', b),
   updateTask: (id: string, b: Partial<Task>) => req<Task>('PATCH', `/tasks/${id}`, b),
   deleteTask: (id: string) => req<{ ok: true }>('DELETE', `/tasks/${id}`),

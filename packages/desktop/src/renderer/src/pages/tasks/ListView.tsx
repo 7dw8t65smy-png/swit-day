@@ -6,6 +6,7 @@ import { confirmDelete } from '../../lib/confirm';
 import ProjectBadge from '../../components/ProjectBadge';
 import PriorityBadge from '../../components/PriorityBadge';
 import DifficultyBadge from '../../components/DifficultyBadge';
+import { AssigneeBadge } from '../../components/AssigneeBadge';
 import { formatShortDate } from './dueDate';
 
 export function ListView({
@@ -50,6 +51,7 @@ export function ListView({
           {t.project_id && <ProjectBadge project={projectById.get(t.project_id) ?? null} />}
           <DifficultyBadge difficulty={t.difficulty ?? 'medium'} />
           <PriorityBadge priority={t.priority} />
+          <AssigneeBadge assigneeId={t.assignee_id} compact />
           {t.due_date && <span className="text-xs text-muted">{formatShortDate(t.due_date)}</span>}
           <button
             onClick={async (e) => {

@@ -7,7 +7,7 @@
 //  - 'anon'    — сервер требует вход, пользователь не залогинен → экран входа
 //  - 'authed'  — залогинен, выбрано активное пространство
 import { create } from 'zustand';
-import type { User, WorkspaceWithRole } from '@swit/shared';
+import type { User, WorkspaceWithRole, WorkspaceMember } from '@swit/shared';
 import { authApi, configureApi, getApiConfig } from '../api';
 import { connectRealtime, disconnectRealtime, onRealtimeChange } from './realtime';
 
@@ -43,10 +43,13 @@ interface AuthState {
   user: User | null;
   workspaces: WorkspaceWithRole[];
   activeWorkspaceId: string | null;
+  // Участники активного пространства (для назначения задач + подписи имя/цвет).
+  members: WorkspaceMember[];
   // Счётчик инвалидации: растёт при realtime-изменении или смене пространства.
   // Страницы могут держать его в зависимостях своих загрузок (Этап 4).
   dataVersion: number;
   bootstrap: () => Promise<void>;
+  loadMembers: () => Promise<void>;
   login: (serverUrl: string, handle: string, password: string) => Promise<string | null>;
   register: (
     serverUrl: string,
@@ -69,7 +72,18 @@ export const useAuth = create<AuthState>((set, get) => ({
   user: null,
   workspaces: [],
   activeWorkspaceId: null,
+  members: [],
   dataVersion: 0,
+
+  loadMembers: async () => {
+    const id = get().activeWorkspaceId;
+    if (!id) {
+      set({ members: [] });
+      return;
+    }
+    const res = await authApi.listMembers(id);
+    if (res.ok && res.data) set({ members: res.data });
+  },
 
   bootstrap: async () => {
     if (!realtimeBound) {
@@ -103,6 +117,7 @@ export const useAuth = create<AuthState>((set, get) => ({
         set({ status: 'authed', user: me.data.user, workspaces, activeWorkspaceId: active });
         await persist(saved.token, active);
         connectRealtime();
+        void get().loadMembers();
         return;
       }
       // Токен протух — чистим.
@@ -140,6 +155,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     set((s) => ({ activeWorkspaceId: id, dataVersion: s.dataVersion + 1 }));
     await persist(getApiConfig().token ?? '', id);
     connectRealtime();
+    void get().loadMembers();
   },
 
   refreshWorkspaces: async () => {
@@ -169,5 +185,6 @@ async function applyAuth(
   });
   await sessionBridge()?.set({ serverUrl, token: auth.token, activeWorkspaceId: active });
   connectRealtime();
+  void useAuth.getState().loadMembers();
   return null;
 }

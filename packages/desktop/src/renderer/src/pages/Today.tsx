@@ -9,6 +9,7 @@ import { sortByPriority } from '../lib/priority';
 import { localDateKey } from '../lib/date';
 import ProjectBadge from '../components/ProjectBadge';
 import PriorityBadge from '../components/PriorityBadge';
+import { AssigneeBadge } from '../components/AssigneeBadge';
 import DifficultyBadge from '../components/DifficultyBadge';
 import { useRealtimeRefetch } from '../hooks/useRealtimeRefetch';
 import TaskDrawer from '../components/TaskDrawer';
@@ -218,6 +219,7 @@ export default function Today() {
                 )}
                 <DifficultyBadge difficulty={task.difficulty ?? 'medium'} />
                 <PriorityBadge priority={task.priority} />
+                <AssigneeBadge assigneeId={task.assignee_id} compact />
                 <button
                   onClick={async (e) => {
                     e.stopPropagation();

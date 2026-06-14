@@ -4,6 +4,7 @@ import type { Note, Project, Task, TaskDifficulty, TaskPriority } from '@swit/sh
 import { api } from '../api';
 import { PRIORITIES, PRIORITY_LABEL } from '../lib/priority';
 import { DIFFICULTIES, DIFFICULTY_ICON, DIFFICULTY_LABEL } from '../lib/difficulty';
+import { useAuth } from '../lib/auth';
 import Subtasks from './Subtasks';
 
 interface Props {
@@ -26,12 +27,15 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
   const [estimated, setEstimated] = useState<string>('');
   const [notes, setNotes] = useState<Note[]>([]);
   const [newNote, setNewNote] = useState('');
+  const [assignee, setAssignee] = useState<string>('');
+  const members = useAuth((s) => s.members);
 
   useEffect(() => {
     if (!task) return;
     setTitle(task.title);
     setDescription(task.description ?? '');
     setProjectId(task.project_id ?? '');
+    setAssignee(task.assignee_id ?? '');
     setPriority(task.priority);
     setDifficulty(task.difficulty ?? 'medium');
     setDueDate(task.due_date ?? '');
@@ -171,6 +175,27 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
                 </option>
               ))}
             </select>
+
+            {members.length > 1 && (
+              <>
+                <div className="text-xs uppercase text-muted">Исполнитель</div>
+                <select
+                  value={assignee}
+                  onChange={(e) => {
+                    setAssignee(e.target.value);
+                    void patch({ assignee_id: e.target.value || null });
+                  }}
+                  className="h-9 px-2 rounded-md border border-border bg-surface text-sm w-full"
+                >
+                  <option value="">Не назначено</option>
+                  {members.map((m) => (
+                    <option key={m.user_id} value={m.user_id}>
+                      {m.display_name || m.handle}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
 
             <div className="text-xs uppercase text-muted">Приоритет</div>
             <select
