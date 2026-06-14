@@ -4,24 +4,9 @@ import { writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import Store from 'electron-store';
 import { initTray, destroyTray } from './tray.js';
 import { initReminders, destroyReminders } from './reminders.js';
-
-// Сессия многопользовательского режима: адрес сервера, токен, активное
-// пространство. Храним через electron-store (файл в userData), а НЕ в
-// localStorage рендерера — так токен недоступен из JS-контекста страницы
-// (меньше урон при XSS). encryptionKey даёт лёгкую обфускацию на диске.
-interface SwitSession {
-  serverUrl: string;
-  token: string;
-  activeWorkspaceId: string | null;
-}
-const sessionStore = new Store<{ session: SwitSession | null }>({
-  name: 'swit-session',
-  encryptionKey: 'swit-day-session-v1',
-  defaults: { session: null }
-});
+import { getSession, setSession, clearSession, type SwitSession } from './session.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -196,21 +181,13 @@ function createWindow(): void {
 ipcMain.handle('app:get-server-url', () => SERVER_URL);
 
 // --- Сессия многопользовательского режима ---
-ipcMain.handle('session:get', () => sessionStore.get('session'));
+ipcMain.handle('session:get', () => getSession());
 ipcMain.handle('session:set', (_e, session: SwitSession | null) => {
-  if (session && typeof session.serverUrl === 'string' && typeof session.token === 'string') {
-    sessionStore.set('session', {
-      serverUrl: session.serverUrl,
-      token: session.token,
-      activeWorkspaceId: session.activeWorkspaceId ?? null
-    });
-  } else {
-    sessionStore.set('session', null);
-  }
+  setSession(session);
   return { ok: true };
 });
 ipcMain.handle('session:clear', () => {
-  sessionStore.set('session', null);
+  clearSession();
   return { ok: true };
 });
 

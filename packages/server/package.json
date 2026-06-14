@@ -5,6 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
+    "predev": "node -e \"require('better-sqlite3')\" 2>/dev/null || npm rebuild better-sqlite3",
     "dev": "npm run build --workspace=@swit/shared && tsx watch src/index.ts",
     "build": "npm run build --workspace=@swit/shared && tsc",
     "start": "node dist/index.js",

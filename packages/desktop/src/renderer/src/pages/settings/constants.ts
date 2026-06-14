@@ -8,6 +8,7 @@ export const PAGES: { value: string; label: string }[] = [
   { value: '/notes', label: 'Заметки' },
   { value: '/canvas', label: 'Холсты' },
   { value: '/calendar', label: 'Календарь' },
+  { value: '/reminders', label: 'Напоминания' },
   { value: '/playbooks', label: 'Регламенты' },
   { value: '/finance', label: 'Расходы' },
   { value: '/journal', label: 'Журнал' },

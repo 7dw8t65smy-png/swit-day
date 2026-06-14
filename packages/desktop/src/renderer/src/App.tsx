@@ -22,6 +22,7 @@ const Settings = lazy(() => import('./pages/Settings'));
 const Playbooks = lazy(() => import('./pages/Playbooks'));
 const Habits = lazy(() => import('./pages/Habits'));
 const Finance = lazy(() => import('./pages/Finance'));
+const Reminders = lazy(() => import('./pages/Reminders'));
 // Не-маршрутные компоненты остаются обычными (eager) импортами: они нужны на
 // каждой странице и/или висят оверлеями.
 import CommandPalette from './components/CommandPalette';
@@ -196,6 +197,7 @@ export default function App() {
                 <Route path="/journal" element={<Journal />} />
                 <Route path="/stats" element={<Stats />} />
                 <Route path="/finance" element={<Finance />} />
+                <Route path="/reminders" element={<Reminders />} />
                 <Route path="/settings" element={<Settings />} />
               </Routes>
             </Suspense>

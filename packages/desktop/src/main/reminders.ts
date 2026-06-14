@@ -1,9 +1,16 @@
 import { Notification } from 'electron';
-import type { Habit, HabitCadenceConfig, HabitLog, Reminder } from '@swit/shared';
+import type {
+  Habit,
+  HabitCadenceConfig,
+  HabitLog,
+  Reminder,
+  RecurringTransaction
+} from '@swit/shared';
 
 import { app } from 'electron';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { getSession } from './session.js';
 
 let serverUrl = '';
 let pollTimer: NodeJS.Timeout | null = null;
@@ -13,6 +20,7 @@ let maintenanceTimer: NodeJS.Timeout | null = null;
 // тормозном сервере.
 let tickRunning = false;
 let habitsTickRunning = false;
+let recurringTickRunning = false;
 
 // Track the last HH:MM we already evaluated habits for — prevents re-firing the
 // same minute when the poll runs 2× within the same minute.
@@ -65,14 +73,34 @@ interface NotificationSettings {
   notify_quiet_end: string;
 }
 
+// Куда и с какими заголовками ходить. Если есть сессия (многопользовательский
+// режим) — на VPS с токеном и активным пространством; иначе на локальный сервер
+// (одиночный режим) без авторизации.
+function endpoint(): { base: string; headers: Record<string, string> } {
+  const s = getSession();
+  if (s && s.token) {
+    const headers: Record<string, string> = { Authorization: `Bearer ${s.token}` };
+    if (s.activeWorkspaceId) headers['X-Workspace-Id'] = s.activeWorkspaceId;
+    return { base: s.serverUrl, headers };
+  }
+  return { base: serverUrl, headers: {} };
+}
+
 async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(serverUrl + path, {
+  const { base, headers } = endpoint();
+  const res = await fetch(base + path, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: { ...headers, ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined
   });
   if (!res.ok) throw new Error(`${method} ${path} → ${res.status}`);
   return res.json() as Promise<T>;
+}
+
+/** Есть ли активная серверная сессия (выбрано пространство). */
+function hasWorkspaceSession(): boolean {
+  const s = getSession();
+  return Boolean(s && s.token && s.activeWorkspaceId);
 }
 
 function boolSetting(raw: Record<string, string>, key: string, fallback: boolean): boolean {
@@ -244,6 +272,50 @@ async function tickHabits(): Promise<void> {
   }
 }
 
+// --- Регулярные платежи ---
+// Подходит ли регулярный платёж под сегодня (по дню месяца / дню недели).
+function isRecurringDue(r: RecurringTransaction, date: Date): boolean {
+  if (r.period === 'weekly') {
+    return r.day_of_week != null && date.getDay() === r.day_of_week;
+  }
+  // monthly: целимся в day_of_month, но не дальше последнего дня месяца.
+  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  const target = Math.min(r.day_of_month ?? 1, lastDay);
+  return date.getDate() === target;
+}
+
+/**
+ * Напоминания о регулярных платежах. Раз в день, когда наступило remind_time
+ * и платёж приходится на сегодня. last_reminded_on на сервере защищает от
+ * повторов (idempotent). Работает только при активной серверной сессии.
+ */
+async function tickRecurring(): Promise<void> {
+  if (recurringTickRunning) return;
+  if (!hasWorkspaceSession()) return; // регулярные платежи живут в пространстве
+  recurringTickRunning = true;
+  const now = new Date();
+  const today = ymd(now);
+  try {
+    const settings = await loadNotificationSettings();
+    if (!settings.notify_enabled || !settings.notify_reminders || isQuietNow(settings, now)) return;
+    const list = await api<RecurringTransaction[]>('GET', '/recurring-transactions');
+    const cur = now.getHours() * 60 + now.getMinutes();
+    for (const r of list) {
+      if (r.archived || !r.reminder_enabled) continue;
+      if (r.last_reminded_on === today) continue;
+      if (!isRecurringDue(r, now)) continue;
+      const remind = minutesFromHHMM(r.remind_time ?? '09:00') ?? 540;
+      if (cur < remind) continue;
+      showNotification('💸 ' + r.description, `Регулярный платёж · ${Math.abs(r.amount)}`, settings);
+      await api('PATCH', `/recurring-transactions/${r.id}`, { last_reminded_on: today });
+    }
+  } catch {
+    // offline / server warming up
+  } finally {
+    recurringTickRunning = false;
+  }
+}
+
 /**
  * Раз в 10 минут просим сервер:
  *  - проставить 'missed' для рутин, у которых истекло окно подтверждения,
@@ -266,6 +338,7 @@ export function initReminders(opts: { serverUrl: string }): void {
   pollTimer = setInterval(() => {
     void tick();
     void tickHabits();
+    void tickRecurring();
   }, 30_000);
   // First check after 5 seconds — сначала прогоняем maintenance (auto-miss
   // и закрытие периодов), потом обычный tick и tickHabits, чтобы не пушить
@@ -275,6 +348,7 @@ export function initReminders(opts: { serverUrl: string }): void {
       await runHabitMaintenance();
       await tick();
       await tickHabits();
+      await tickRecurring();
     })();
   }, 5000);
   // Maintenance — каждые 10 минут.
