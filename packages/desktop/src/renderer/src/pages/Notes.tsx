@@ -13,6 +13,9 @@ export default function Notes() {
   const [search, setSearch] = useState('');
   const [projectFilter, setProjectFilter] = useState<string>('');
   const [selectedFull, setSelectedFull] = useState<Note | null>(null);
+  // id заметки, которую этот клиент только что создал — только она открывается
+  // на ввод. Чужие (в т.ч. пустые, прилетевшие по realtime) не трогаем.
+  const [autoEditId, setAutoEditId] = useState<string | null>(null);
 
   useEffect(() => {
     void reload();
@@ -57,6 +60,7 @@ export default function Notes() {
       project_id: projectFilter || null
     });
     setNotes((cur) => [n, ...cur]);
+    setAutoEditId(n.id);
   }
 
   async function addFull() {
@@ -117,6 +121,7 @@ export default function Notes() {
           notes={filtered}
           projects={projectById}
           tasks={tasks}
+          autoEditId={autoEditId}
           onChange={reload}
         />
       ) : (
@@ -138,11 +143,13 @@ function QuickNotesGrid({
   notes,
   projects,
   tasks,
+  autoEditId,
   onChange
 }: {
   notes: Note[];
   projects: Map<string, Project>;
   tasks: Task[];
+  autoEditId: string | null;
   onChange: () => Promise<void>;
 }) {
   const taskById = useMemo(() => new Map(tasks.map((t) => [t.id, t] as const)), [tasks]);
@@ -154,6 +161,7 @@ function QuickNotesGrid({
           note={n}
           project={n.project_id ? projects.get(n.project_id) ?? null : null}
           task={n.task_id ? taskById.get(n.task_id) ?? null : null}
+          autoEdit={n.id === autoEditId}
           onChange={onChange}
         />
       ))}
@@ -168,16 +176,19 @@ function QuickNoteCard({
   note,
   project,
   task,
+  autoEdit,
   onChange
 }: {
   note: Note;
   project: Project | null;
   task: Task | null;
+  autoEdit: boolean;
   onChange: () => Promise<void>;
 }) {
   const [text, setText] = useState(note.content);
-  // Новая (пустая) заметка сразу открывается на ввод.
-  const [editing, setEditing] = useState(note.content === '');
+  // На ввод открывается ТОЛЬКО заметка, которую создал этот клиент (autoEdit).
+  // Чужие пустые заметки (прилетевшие по realtime) не перехватывают фокус.
+  const [editing, setEditing] = useState(autoEdit);
 
   // Пересинхронизируем локальный текст с заметкой, когда не редактируем
   // (после reload/realtime контент мог измениться извне).
