@@ -49,8 +49,10 @@ export default function Notes() {
   }, [notes, type, search, projectFilter]);
 
   async function addQuick() {
+    // Создаём пустую — карточка сама откроется на ввод (см. QuickNoteCard).
+    // Пустую так и не заполненную заметку при потере фокуса выбросим.
     const n = await api.createNote({
-      content: 'Новая заметка',
+      content: '',
       type: 'quick',
       project_id: projectFilter || null
     });
@@ -174,12 +176,33 @@ function QuickNoteCard({
   onChange: () => Promise<void>;
 }) {
   const [text, setText] = useState(note.content);
-  const [editing, setEditing] = useState(false);
+  // Новая (пустая) заметка сразу открывается на ввод.
+  const [editing, setEditing] = useState(note.content === '');
+
+  // Пересинхронизируем локальный текст с заметкой, когда не редактируем
+  // (после reload/realtime контент мог измениться извне).
+  useEffect(() => {
+    if (!editing) setText(note.content);
+  }, [note.content, editing]);
 
   async function save() {
-    if (text !== note.content) await api.updateNote(note.id, { content: text });
+    const trimmed = text.trim();
     setEditing(false);
-    await onChange();
+    if (trimmed === '') {
+      if (note.content === '') {
+        // Новая пустая заметка — не оставляем «призрак».
+        await api.deleteNote(note.id);
+        await onChange();
+      } else {
+        // Существующую не затираем — откатываем к сохранённому.
+        setText(note.content);
+      }
+      return;
+    }
+    if (text !== note.content) {
+      await api.updateNote(note.id, { content: text });
+      await onChange();
+    }
   }
   async function togglePin() {
     await api.updateNote(note.id, { pinned: note.pinned ? 0 : 1 });
@@ -208,14 +231,15 @@ function QuickNoteCard({
           onBlur={save}
           autoFocus
           rows={4}
-          className="w-full text-sm bg-transparent resize-none focus:outline-none"
+          placeholder="Текст заметки…"
+          className="w-full text-sm bg-transparent resize-none focus:outline-none placeholder:text-muted/50"
         />
       ) : (
         <div
           onClick={() => setEditing(true)}
           className="text-sm whitespace-pre-wrap cursor-text min-h-[60px]"
         >
-          {note.content}
+          {note.content || <span className="text-muted/50">Пустая заметка…</span>}
         </div>
       )}
       {(project || task) && (
