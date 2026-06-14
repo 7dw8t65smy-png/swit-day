@@ -373,6 +373,19 @@ export default function CanvasEditor(): JSX.Element {
     }
   };
 
+  // Двойной клик по узлу — переименование (как в отдельном редакторе карт).
+  const onNodeDoubleClick: NodeMouseHandler = (_e, node) => {
+    if (mode === 'connect') return;
+    if (mindIds.has(node.id)) {
+      useBoard.getState().setEditing(null);
+      useMindMap.getState().select(node.id);
+      useMindMap.getState().setEditing(node.id);
+    } else {
+      useMindMap.getState().setEditing(null);
+      useBoard.getState().setEditing(node.id);
+    }
+  };
+
   function centerFlow(): { x: number; y: number } {
     const inst = rfRef.current;
     const wrap = wrapRef.current;
@@ -794,6 +807,7 @@ export default function CanvasEditor(): JSX.Element {
               onSelectionChange={onSelectionChange}
               onNodeDragStop={onNodeDragStop}
               onNodeClick={onNodeClick}
+              onNodeDoubleClick={onNodeDoubleClick}
               onInit={(inst) => (rfRef.current = inst)}
               onPaneClick={() => {
                 useMindMap.getState().select(null);
