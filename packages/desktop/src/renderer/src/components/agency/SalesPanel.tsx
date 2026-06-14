@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ClipboardPaste, Trash2, Ban, Check, FilterX } from 'lucide-react';
+import { ClipboardPaste, Trash2, Ban, Check, FilterX, RefreshCw } from 'lucide-react';
 import { SHIFT_LABELS, SHIFTS } from '@swit/shared';
 import type { AgencySale } from '@swit/shared';
 import { api } from '../../api';
@@ -36,6 +36,7 @@ export default function SalesPanel() {
   const [sales, setSales] = useState<AgencySale[]>([]);
   const [filters, setFilters] = useState<Filters>(EMPTY);
   const [showImport, setShowImport] = useState(false);
+  const [recomputing, setRecomputing] = useState(false);
 
   const modelName = (id: string): string => models.find((m) => m.id === id)?.name ?? '—';
 
@@ -77,6 +78,20 @@ export default function SalesPanel() {
     await load();
   }
 
+  // Пересчитать продажи по текущим настройкам (типы в ЗП + правила сумм)
+  // и пересинхронизировать смену со сменой назначенного чаттера.
+  async function recompute(): Promise<void> {
+    if (!agencyId) return;
+    setRecomputing(true);
+    try {
+      const res = await api.recomputeAgencySales(agencyId);
+      await load();
+      pushToast({ kind: 'info', message: `Обновлено продаж: ${res.updated}` });
+    } finally {
+      setRecomputing(false);
+    }
+  }
+
   // Создать правило исключения по сумме + сразу исключить все загруженные продажи с этой суммой.
   // Ярлык ставим автоматически (window.prompt в Electron не работает); переименовать
   // или удалить правило можно в настройках агентства.
@@ -102,9 +117,17 @@ export default function SalesPanel() {
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <button
           onClick={() => setShowImport(true)}
-          className="bg-accent text-white px-3 h-9 rounded-md text-sm flex items-center gap-1.5"
+          className="bg-accent text-white px-3 h-9 rounded-md text-sm flex items-center gap-1.5 hover:brightness-110 transition active:scale-[0.98]"
         >
           <ClipboardPaste size={15} /> Вставить продажи
+        </button>
+        <button
+          onClick={() => void recompute()}
+          disabled={recomputing}
+          title="Применить текущие настройки агентства (типы в ЗП и правила) ко всем продажам"
+          className="px-3 h-9 rounded-md text-sm flex items-center gap-1.5 border border-border bg-surface text-muted hover:text-ink transition disabled:opacity-50"
+        >
+          <RefreshCw size={14} className={recomputing ? 'animate-spin' : ''} /> Обновить
         </button>
 
         <span className="flex-1" />

@@ -173,7 +173,7 @@ const TABLES = [
     name: 'agency_chatters',
     columns: [
       'id', 'agency_id', 'name', 'telegram', 'experience', 'trc20', 'percent',
-      'color', 'active', 'notes', 'sort_order', 'created_at', 'updated_at'
+      'shift', 'color', 'active', 'notes', 'sort_order', 'created_at', 'updated_at'
     ]
   },
   {

@@ -71,10 +71,14 @@ export default function ModelsBoard() {
         </div>
       ) : (
         <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
-          {models.map((m) => {
+          {models.map((m, i) => {
             const gaps = SHIFTS.filter((s) => !chatterFor(m.id, s)).length;
             return (
-              <div key={m.id} className="rounded-xl border border-border bg-surface p-3 group">
+              <div
+                key={m.id}
+                className="rounded-xl border border-border bg-surface p-3 group lift animate-rise"
+                style={{ ['--rise-delay' as string]: `${Math.min(i, 12) * 35}ms` }}
+              >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="font-medium text-ink truncate">{m.name}</span>

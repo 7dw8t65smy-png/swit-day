@@ -62,6 +62,8 @@ export default function AgencySettings({ agency, onClose }: { agency: Agency; on
         default_percent: Number.isFinite(p) ? p : agency.default_percent,
         payout_kinds: kinds
       });
+      // Сразу применяем новые правила/типы ко всем уже импортированным продажам.
+      await api.recomputeAgencySales(agency.id);
       await reloadAll();
       onClose();
     } finally {

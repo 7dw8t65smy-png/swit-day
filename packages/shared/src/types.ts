@@ -590,6 +590,9 @@ export interface AgencyChatter {
   trc20: string | null;
   // Личный % (от NET). null → берётся default_percent агентства.
   percent: number | null;
+  // Фиксированная смена чаттера. При назначении чаттера на продажу её смена
+  // проставляется отсюда (время продажи смену больше не определяет).
+  shift: AgencyShift | null;
   color: string | null;
   active: number;
   notes: string | null;

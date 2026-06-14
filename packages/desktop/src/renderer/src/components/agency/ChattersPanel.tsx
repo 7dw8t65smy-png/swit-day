@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, Save, Send } from 'lucide-react';
-import { SHIFT_LABELS } from '@swit/shared';
-import type { AgencyChatter } from '@swit/shared';
+import { SHIFT_LABELS, SHIFTS } from '@swit/shared';
+import type { AgencyChatter, AgencyShift } from '@swit/shared';
 import { api } from '../../api';
 import { useAgencyStore } from '../../lib/agency';
 
@@ -11,6 +11,7 @@ interface Draft {
   experience: string;
   trc20: string;
   percent: string; // строкой, пусто = личный % не задан (берётся дефолт агентства)
+  shift: AgencyShift | '';
   color: string;
   notes: string;
   active: boolean;
@@ -23,6 +24,7 @@ function toDraft(c: AgencyChatter): Draft {
     experience: c.experience ?? '',
     trc20: c.trc20 ?? '',
     percent: c.percent != null ? String(c.percent) : '',
+    shift: c.shift ?? '',
     color: c.color ?? '#2563EB',
     notes: c.notes ?? '',
     active: !!c.active
@@ -83,6 +85,7 @@ export default function ChattersPanel() {
         experience: draft.experience.trim() || null,
         trc20: draft.trc20.trim() || null,
         percent: percentNum != null && !Number.isNaN(percentNum) ? percentNum : null,
+        shift: draft.shift || null,
         color: draft.color,
         notes: draft.notes.trim() || null,
         active: draft.active ? 1 : 0
@@ -192,6 +195,18 @@ export default function ChattersPanel() {
             </Field>
             <Field label="Опыт">
               <input className={inputCls} value={draft.experience} placeholder="напр. 1 год" onChange={(e) => setDraft({ ...draft, experience: e.target.value })} />
+            </Field>
+            <Field label="Смена (проставится продаже при назначении)">
+              <select
+                className={inputCls}
+                value={draft.shift}
+                onChange={(e) => setDraft({ ...draft, shift: e.target.value as AgencyShift | '' })}
+              >
+                <option value="">— не задана —</option>
+                {SHIFTS.map((s) => (
+                  <option key={s} value={s}>{SHIFT_LABELS[s]}</option>
+                ))}
+              </select>
             </Field>
             <Field label="Кошелёк TRC20 (USDT)" wide>
               <input className={`${inputCls} font-mono`} value={draft.trc20} placeholder="T..." onChange={(e) => setDraft({ ...draft, trc20: e.target.value })} />

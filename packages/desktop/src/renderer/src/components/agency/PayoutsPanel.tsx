@@ -84,8 +84,12 @@ export default function PayoutsPanel() {
         <>
           {/* Итоги по чаттерам */}
           <div className="grid gap-3 mb-5 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
-            {data.rows.map((r) => (
-              <div key={r.chatter_id} className="rounded-xl border border-border bg-surface p-3">
+            {data.rows.map((r, i) => (
+              <div
+                key={r.chatter_id}
+                className="rounded-xl border border-border bg-surface p-3 lift animate-rise"
+                style={{ ['--rise-delay' as string]: `${Math.min(i, 12) * 35}ms` }}
+              >
                 <div className="flex items-center gap-2 mb-2">
                   <span className="w-3 h-3 rounded-full" style={{ background: colorOf(r.chatter_id) }} />
                   <span className="font-medium text-ink truncate">{r.chatter_name}</span>

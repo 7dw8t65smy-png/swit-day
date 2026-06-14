@@ -76,6 +76,7 @@ interface ChatterInput {
   experience?: string | null;
   trc20?: string | null;
   percent?: number | null;
+  shift?: AgencyShift | null;
   color?: string | null;
   active?: number;
   notes?: string | null;
@@ -238,8 +239,8 @@ export function registerAgency(app: FastifyInstance): void {
     const b = req.body;
     db.prepare(
       `INSERT INTO agency_chatters
-       (id, agency_id, name, telegram, experience, trc20, percent, color, active, notes, sort_order, created_at, updated_at, workspace_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, agency_id, name, telegram, experience, trc20, percent, shift, color, active, notes, sort_order, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       b.agency_id,
@@ -248,6 +249,7 @@ export function registerAgency(app: FastifyInstance): void {
       b.experience ?? null,
       b.trc20 ?? null,
       b.percent ?? null,
+      b.shift ?? null,
       b.color ?? pickColor(),
       b.active ?? 1,
       b.notes ?? null,
@@ -269,7 +271,7 @@ export function registerAgency(app: FastifyInstance): void {
       const n = { ...cur, ...req.body, updated_at: nowIso() };
       db.prepare(
         `UPDATE agency_chatters SET
-           name=?, telegram=?, experience=?, trc20=?, percent=?, color=?, active=?, notes=?, sort_order=?, updated_at=?
+           name=?, telegram=?, experience=?, trc20=?, percent=?, shift=?, color=?, active=?, notes=?, sort_order=?, updated_at=?
          WHERE id=?`
       ).run(
         n.name,
@@ -277,6 +279,7 @@ export function registerAgency(app: FastifyInstance): void {
         n.experience,
         n.trc20,
         n.percent ?? null,
+        n.shift ?? null,
         n.color,
         n.active,
         n.notes,
@@ -455,9 +458,6 @@ export function registerAgency(app: FastifyInstance): void {
         .prepare('SELECT * FROM agency_payout_rules WHERE agency_id = ? AND workspace_id IS ? AND active = 1')
         .all(agency_id, ws) as AgencyPayoutRule[];
 
-      const assignStmt = db.prepare(
-        'SELECT chatter_id FROM agency_assignments WHERE model_id = ? AND shift = ? AND workspace_id IS ?'
-      );
       const insert = db.prepare(
         `INSERT OR IGNORE INTO agency_sales
          (id, agency_id, model_id, chatter_id, occurred_at, local_date, shift, amount, fee, net,
@@ -471,11 +471,10 @@ export function registerAgency(app: FastifyInstance): void {
 
       const tx = db.transaction(() => {
         for (const s of sales) {
+          // Дату считаем в МСК; смену и чаттера НЕ определяем автоматически —
+          // пользователь сам выберет чаттера на продаже, смена возьмётся из него.
           const parts = toMskParts(s, agency.source_tz_offset);
-          const assign = assignStmt.get(model_id, parts.shift, ws) as
-            | { chatter_id: string }
-            | undefined;
-          const chatterId = assign?.chatter_id ?? null;
+          const chatterId: string | null = null;
 
           // Считается ли в ЗП: сначала по типу, затем правила исключения по сумме.
           let counts = kinds[s.kind] !== false;
@@ -500,7 +499,7 @@ export function registerAgency(app: FastifyInstance): void {
             chatterId,
             parts.occurredAtUtc,
             parts.mskDate,
-            parts.shift,
+            null, // смена определится при назначении чаттера
             s.amount,
             s.fee,
             s.net,
@@ -540,15 +539,31 @@ export function registerAgency(app: FastifyInstance): void {
     Params: { id: string };
     Body: Partial<Pick<AgencySale, 'chatter_id' | 'counts_for_payout' | 'excluded_reason' | 'kind'>>;
   }>('/agency/sales/:id', (req) => {
+    const ws = req.workspaceId ?? null;
     const cur = db
       .prepare('SELECT * FROM agency_sales WHERE id = ? AND workspace_id IS ?')
-      .get(req.params.id, req.workspaceId ?? null) as AgencySale | undefined;
+      .get(req.params.id, ws) as AgencySale | undefined;
     if (!cur) throw new Error('not found');
     const n = { ...cur, ...req.body, updated_at: nowIso() };
+
+    // Смена продажи следует за назначенным чаттером (у каждого фиксированная смена).
+    let shift = cur.shift;
+    if ('chatter_id' in req.body) {
+      if (n.chatter_id) {
+        const ch = db
+          .prepare('SELECT shift FROM agency_chatters WHERE id = ? AND workspace_id IS ?')
+          .get(n.chatter_id, ws) as { shift: string | null } | undefined;
+        shift = (ch?.shift as AgencySale['shift']) ?? null;
+      } else {
+        shift = null;
+      }
+    }
+
     db.prepare(
-      `UPDATE agency_sales SET chatter_id=?, counts_for_payout=?, excluded_reason=?, kind=?, updated_at=? WHERE id=?`
+      `UPDATE agency_sales SET chatter_id=?, shift=?, counts_for_payout=?, excluded_reason=?, kind=?, updated_at=? WHERE id=?`
     ).run(
       n.chatter_id ?? null,
+      shift,
       n.counts_for_payout,
       n.excluded_reason ?? null,
       n.kind,
@@ -564,6 +579,49 @@ export function registerAgency(app: FastifyInstance): void {
       .run(req.params.id, req.workspaceId ?? null);
     if (r.changes === 0) throw new Error('not found');
     return { ok: true };
+  });
+
+  // Пересчёт продаж по текущим настройкам агентства (типы в ЗП + правила сумм)
+  // и пересинхронизация смены продажи со сменой назначенного чаттера.
+  app.post<{ Body: { agency_id: string } }>('/agency/sales/recompute', (req) => {
+    const ws = req.workspaceId ?? null;
+    const { agency_id } = req.body;
+    const agency = requireAgency(ws, agency_id);
+    const kinds = parseKinds(agency.payout_kinds);
+    const rules = db
+      .prepare('SELECT * FROM agency_payout_rules WHERE agency_id = ? AND workspace_id IS ? AND active = 1')
+      .all(agency_id, ws) as AgencyPayoutRule[];
+    const sales = db
+      .prepare('SELECT * FROM agency_sales WHERE agency_id = ? AND workspace_id IS ?')
+      .all(agency_id, ws) as AgencySale[];
+    const chatters = db
+      .prepare('SELECT id, shift FROM agency_chatters WHERE agency_id = ? AND workspace_id IS ?')
+      .all(agency_id, ws) as { id: string; shift: AgencySale['shift'] }[];
+    const shiftById = new Map(chatters.map((c) => [c.id, c.shift]));
+
+    const upd = db.prepare(
+      'UPDATE agency_sales SET counts_for_payout = ?, excluded_reason = ?, shift = ?, updated_at = ? WHERE id = ?'
+    );
+    let updated = 0;
+    const tx = db.transaction(() => {
+      for (const s of sales) {
+        let counts = kinds[s.kind] !== false;
+        let reason: string | null = counts ? null : 'Тип не учитывается в ЗП';
+        for (const rule of rules) {
+          if (rule.match_kind && rule.match_kind !== s.kind) continue;
+          if (Math.abs(rule.amount - s.amount) < 0.005) {
+            counts = false;
+            reason = rule.label || 'Исключено правилом';
+            break;
+          }
+        }
+        const shift = s.chatter_id ? shiftById.get(s.chatter_id) ?? null : null;
+        upd.run(counts ? 1 : 0, reason, shift, nowIso(), s.id);
+        updated++;
+      }
+    });
+    tx();
+    return { ok: true, updated };
   });
 
   // ---------- Payouts (расчёт выплат за период) ----------

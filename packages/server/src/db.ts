@@ -35,6 +35,8 @@ ensureColumn('habit_logs', 'status', "TEXT NOT NULL DEFAULT 'done'");
 // Multi-user: назначение задачи участнику + цвет пользователя для подписи.
 ensureColumn('tasks', 'assignee_id', 'TEXT');
 ensureColumn('users', 'color', 'TEXT');
+// Агентства: фиксированная смена чаттера (для существующих БД).
+ensureColumn('agency_chatters', 'shift', 'TEXT');
 
 // Старая схема имела UNIQUE на journal_entries.date. Теперь допустимо
 // несколько записей за один день. UNIQUE в SQLite не снимается ALTER'ом —

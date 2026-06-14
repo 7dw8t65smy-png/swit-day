@@ -551,6 +551,7 @@ export const api = {
     experience?: string | null;
     trc20?: string | null;
     percent?: number | null;
+    shift?: AgencyShift | null;
     color?: string | null;
     notes?: string | null;
   }) => req<AgencyChatter>('POST', '/agency/chatters', b),
@@ -611,6 +612,8 @@ export const api = {
     b: Partial<Pick<AgencySale, 'chatter_id' | 'counts_for_payout' | 'excluded_reason' | 'kind'>>
   ) => req<AgencySale>('PATCH', `/agency/sales/${id}`, b),
   deleteAgencySale: (id: string) => req<{ ok: true }>('DELETE', `/agency/sales/${id}`),
+  recomputeAgencySales: (agencyId: string) =>
+    req<{ ok: true; updated: number }>('POST', '/agency/sales/recompute', { agency_id: agencyId }),
 
   agencyPayouts: (q: { agency_id: string; from?: string; to?: string }) => {
     const qs = new URLSearchParams(

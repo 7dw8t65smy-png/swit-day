@@ -407,6 +407,7 @@ CREATE TABLE IF NOT EXISTS agency_chatters (
   experience  TEXT,
   trc20       TEXT,
   percent     REAL,            -- личный %, NULL → default_percent агентства
+  shift       TEXT,            -- фиксированная смена чаттера (morning|day|evening|night)
   color       TEXT,
   active      INTEGER NOT NULL DEFAULT 1,
   notes       TEXT,
