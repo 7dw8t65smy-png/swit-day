@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X, Trash2, Pin, PinOff } from 'lucide-react';
 import type { Note, Project, Task, TaskDifficulty, TaskPriority } from '@swit/shared';
 import { api } from '../api';
@@ -28,6 +28,8 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
   const [notes, setNotes] = useState<Note[]>([]);
   const [newNote, setNewNote] = useState('');
   const [assignee, setAssignee] = useState<string>('');
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+  const descRef = useRef<HTMLTextAreaElement>(null);
   const members = useAuth((s) => s.members);
   const isTeam = useAuth(
     (s) => s.workspaces.find((w) => w.id === s.activeWorkspaceId)?.type === 'team'
@@ -46,6 +48,16 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
     setEstimated(task.estimated_min ? String(task.estimated_min) : '');
     void loadRelated(task.id);
   }, [task?.id]);
+
+  // Пересинхронизируем буферы заголовка/описания с сервером, когда поле НЕ в
+  // фокусе (правка прилетела по realtime от другого участника). Иначе blur без
+  // ввода записал бы наше старое значение поверх чужой правки.
+  useEffect(() => {
+    if (task && document.activeElement !== titleRef.current) setTitle(task.title);
+  }, [task?.title]);
+  useEffect(() => {
+    if (task && document.activeElement !== descRef.current) setDescription(task.description ?? '');
+  }, [task?.description]);
 
   useEffect(() => {
     if (!task) return undefined;
@@ -150,6 +162,7 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
               className="mt-2 w-4 h-4"
             />
             <textarea
+              ref={titleRef}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               onBlur={saveTitle}
@@ -275,6 +288,7 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
           <div>
             <div className="text-xs uppercase text-muted mb-1.5">Описание</div>
             <textarea
+              ref={descRef}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               onBlur={saveDescription}

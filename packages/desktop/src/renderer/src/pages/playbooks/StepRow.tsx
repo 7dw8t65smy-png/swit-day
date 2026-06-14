@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Trash2, ChevronRight, ChevronDown } from 'lucide-react';
 import { api } from '../../api';
 import type { PlaybookStep } from '@swit/shared';
@@ -18,11 +18,18 @@ export function StepRow({
 }) {
   const [title, setTitle] = useState(step.title);
   const [description, setDescription] = useState(step.description ?? '');
+  const titleRef = useRef<HTMLInputElement>(null);
+  const descRef = useRef<HTMLTextAreaElement>(null);
 
+  // Пересинхронизируем с сервером, когда поле НЕ в фокусе (правка шага могла
+  // прилететь от другого участника по realtime). Иначе blur без ввода затрёт
+  // чужую правку нашим старым значением.
   useEffect(() => {
-    setTitle(step.title);
-    setDescription(step.description ?? '');
-  }, [step.id]);
+    if (document.activeElement !== titleRef.current) setTitle(step.title);
+  }, [step.title]);
+  useEffect(() => {
+    if (document.activeElement !== descRef.current) setDescription(step.description ?? '');
+  }, [step.description]);
 
   async function saveTitle() {
     if (title !== step.title) {
@@ -58,6 +65,7 @@ export function StepRow({
         </button>
         <span className="text-xs text-muted timer-font w-5">{index + 1}.</span>
         <input
+          ref={titleRef}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onBlur={saveTitle}
@@ -78,6 +86,7 @@ export function StepRow({
       {expanded && (
         <div className="border-t border-border px-3 py-2">
           <textarea
+            ref={descRef}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onBlur={saveDesc}

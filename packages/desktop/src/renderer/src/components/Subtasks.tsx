@@ -4,6 +4,7 @@ import type { Task, TaskDifficulty, TaskPriority } from '@swit/shared';
 import { api } from '../api';
 import { PRIORITIES, PRIORITY_LABEL, sortByPriority } from '../lib/priority';
 import { DIFFICULTIES, DIFFICULTY_ICON } from '../lib/difficulty';
+import { useRealtimeRefetch } from '../hooks/useRealtimeRefetch';
 import PriorityBadge from './PriorityBadge';
 import DifficultyBadge from './DifficultyBadge';
 
@@ -22,6 +23,7 @@ export default function Subtasks({ parent, onOpenTask }: Props) {
   useEffect(() => {
     void load();
   }, [parent.id]);
+  useRealtimeRefetch(() => void load());
 
   async function load() {
     const list = await api.listTasks({ parent_task_id: parent.id });
