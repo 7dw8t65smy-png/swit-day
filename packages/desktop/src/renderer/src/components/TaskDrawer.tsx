@@ -29,6 +29,9 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
   const [newNote, setNewNote] = useState('');
   const [assignee, setAssignee] = useState<string>('');
   const members = useAuth((s) => s.members);
+  const isTeam = useAuth(
+    (s) => s.workspaces.find((w) => w.id === s.activeWorkspaceId)?.type === 'team'
+  );
 
   useEffect(() => {
     if (!task) return;
@@ -176,7 +179,7 @@ export default function TaskDrawer({ task, projects, onClose, onChanged, onOpenT
               ))}
             </select>
 
-            {members.length > 1 && (
+            {isTeam && (
               <>
                 <div className="text-xs uppercase text-muted">Исполнитель</div>
                 <select
