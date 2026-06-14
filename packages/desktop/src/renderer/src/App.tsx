@@ -66,6 +66,10 @@ export default function App() {
   // theme) apply inside the store. In packaged builds the renderer can become
   // ready before the in-process server, so retry until settings arrive.
   useEffect(() => {
+    // Ждём, пока разрешится сессия: иначе настройки грузятся ДО установки токена
+    // и GET /settings возвращает 401 (на сервере с авторизацией). В 'legacy' токен
+    // не нужен, в 'authed' он уже проставлен bootstrap'ом.
+    if (authStatus !== 'legacy' && authStatus !== 'authed') return;
     void loadSettings();
     const id = window.setInterval(() => {
       if (useSettings.getState().loaded) {
@@ -75,7 +79,7 @@ export default function App() {
       void loadSettings();
     }, 500);
     return () => window.clearInterval(id);
-  }, [loadSettings]);
+  }, [loadSettings, authStatus]);
 
   // Redirect to start_page once on first load if user lands on `/`.
   // Track with a ref so the redirect happens only on the very first navigation,
