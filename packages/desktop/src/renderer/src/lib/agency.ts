@@ -60,8 +60,14 @@ export const useAgencyStore = create<AgencyStoreState>((set, get) => ({
     const saved = get().selectedId;
     const stillValid = saved && agencies.some((a) => a.id === saved);
     const nextSelected = stillValid ? saved : agencies[0]?.id ?? null;
-    if (nextSelected !== saved) writeSelected(nextSelected);
-    set({ agencies, selectedId: nextSelected });
+    if (nextSelected !== saved) {
+      // Выбор сменился (другое пространство/удаление) — сбрасываем сущности,
+      // чтобы между loadAgencies и reloadEntities не показать чужие данные.
+      writeSelected(nextSelected);
+      set({ agencies, selectedId: nextSelected, models: [], chatters: [], assignments: [], rules: [] });
+    } else {
+      set({ agencies, selectedId: nextSelected });
+    }
   },
 
   select: (id) => {

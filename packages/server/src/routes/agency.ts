@@ -34,6 +34,11 @@ function pickColor(): string {
   return PALETTE[Math.floor(Math.random() * PALETTE.length)];
 }
 
+// Сравнение денежных сумм в целых центах — без дрейфа IEEE 754.
+function cents(n: number): number {
+  return Math.round(n * 100);
+}
+
 function parseKinds(raw: string | null | undefined): AgencyPayoutKinds {
   if (!raw) return DEFAULT_PAYOUT_KINDS;
   try {
@@ -482,7 +487,7 @@ export function registerAgency(app: FastifyInstance): void {
           if (!counts) reason = 'Тип не учитывается в ЗП';
           for (const rule of rules) {
             if (rule.match_kind && rule.match_kind !== s.kind) continue;
-            if (Math.abs(rule.amount - s.amount) < 0.005) {
+            if (cents(rule.amount) === cents(s.amount)) {
               counts = false;
               reason = rule.label || 'Исключено правилом';
               break;
@@ -527,9 +532,9 @@ export function registerAgency(app: FastifyInstance): void {
         insertedIds.length > 0
           ? (db
               .prepare(
-                `SELECT * FROM agency_sales WHERE id IN (${insertedIds.map(() => '?').join(',')})`
+                `SELECT * FROM agency_sales WHERE workspace_id IS ? AND id IN (${insertedIds.map(() => '?').join(',')})`
               )
-              .all(...insertedIds) as AgencySale[])
+              .all(ws, ...insertedIds) as AgencySale[])
           : [];
       return { ok: true, inserted, skipped, sales: rows };
     }
@@ -547,30 +552,36 @@ export function registerAgency(app: FastifyInstance): void {
     const n = { ...cur, ...req.body, updated_at: nowIso() };
 
     // Смена продажи следует за назначенным чаттером (у каждого фиксированная смена).
+    // Чаттер обязан принадлежать тому же агентству, что и продажа.
     let shift = cur.shift;
     if ('chatter_id' in req.body) {
       if (n.chatter_id) {
         const ch = db
-          .prepare('SELECT shift FROM agency_chatters WHERE id = ? AND workspace_id IS ?')
-          .get(n.chatter_id, ws) as { shift: string | null } | undefined;
-        shift = (ch?.shift as AgencySale['shift']) ?? null;
+          .prepare('SELECT shift FROM agency_chatters WHERE id = ? AND agency_id = ? AND workspace_id IS ?')
+          .get(n.chatter_id, cur.agency_id, ws) as { shift: string | null } | undefined;
+        if (!ch) throw new Error('not found');
+        shift = (ch.shift as AgencySale['shift']) ?? null;
       } else {
         shift = null;
       }
     }
 
+    // Явное переключение «в ЗП» пользователем помечаем ручным — пересчёт его не тронет.
+    const manual = 'counts_for_payout' in req.body ? 1 : cur.manual_payout;
+
     db.prepare(
-      `UPDATE agency_sales SET chatter_id=?, shift=?, counts_for_payout=?, excluded_reason=?, kind=?, updated_at=? WHERE id=?`
+      `UPDATE agency_sales SET chatter_id=?, shift=?, counts_for_payout=?, excluded_reason=?, manual_payout=?, kind=?, updated_at=? WHERE id=?`
     ).run(
       n.chatter_id ?? null,
       shift,
       n.counts_for_payout,
       n.excluded_reason ?? null,
+      manual,
       n.kind,
       n.updated_at,
       cur.id
     );
-    return db.prepare('SELECT * FROM agency_sales WHERE id = ?').get(cur.id) as AgencySale;
+    return db.prepare('SELECT * FROM agency_sales WHERE id = ? AND workspace_id IS ?').get(cur.id, ws) as AgencySale;
   });
 
   app.delete<{ Params: { id: string } }>('/agency/sales/:id', (req) => {
@@ -602,20 +613,27 @@ export function registerAgency(app: FastifyInstance): void {
     const upd = db.prepare(
       'UPDATE agency_sales SET counts_for_payout = ?, excluded_reason = ?, shift = ?, updated_at = ? WHERE id = ?'
     );
+    const shiftUpd = db.prepare('UPDATE agency_sales SET shift = ?, updated_at = ? WHERE id = ?');
     let updated = 0;
     const tx = db.transaction(() => {
       for (const s of sales) {
+        const shift = s.chatter_id ? shiftById.get(s.chatter_id) ?? null : null;
+        // Ручное переопределение «в ЗП» не трогаем — синхронизируем только смену.
+        if (s.manual_payout) {
+          shiftUpd.run(shift, nowIso(), s.id);
+          updated++;
+          continue;
+        }
         let counts = kinds[s.kind] !== false;
         let reason: string | null = counts ? null : 'Тип не учитывается в ЗП';
         for (const rule of rules) {
           if (rule.match_kind && rule.match_kind !== s.kind) continue;
-          if (Math.abs(rule.amount - s.amount) < 0.005) {
+          if (cents(rule.amount) === cents(s.amount)) {
             counts = false;
             reason = rule.label || 'Исключено правилом';
             break;
           }
         }
-        const shift = s.chatter_id ? shiftById.get(s.chatter_id) ?? null : null;
         upd.run(counts ? 1 : 0, reason, shift, nowIso(), s.id);
         updated++;
       }

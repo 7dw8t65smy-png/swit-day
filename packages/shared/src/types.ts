@@ -641,6 +641,9 @@ export interface AgencySale {
   // Идёт ли в ЗП чаттеру (с учётом типов и правил исключения).
   counts_for_payout: number;
   excluded_reason: string | null;
+  // Ручное переопределение «в ЗП»: если 1, пересчёт (recompute) не трогает
+  // counts_for_payout этой продажи — уважает решение пользователя.
+  manual_payout: number;
   dedup_key: string;
   raw_line: string | null;
   created_at: string;

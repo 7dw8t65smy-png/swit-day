@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { X, ClipboardPaste, Check } from 'lucide-react';
 import { parseOnlyMonsterSales } from '@swit/shared';
 import type { ParsedSale } from '@swit/shared';
@@ -21,6 +21,11 @@ export default function SalesImportModal({ onClose, onDone }: { onClose: () => v
   const [modelId, setModelId] = useState(models[0]?.id ?? '');
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Если модели подгрузились после открытия модалки — выбираем первую.
+  useEffect(() => {
+    if (!modelId && models[0]) setModelId(models[0].id);
+  }, [models, modelId]);
 
   const parsed: ParsedSale[] = useMemo(
     () => (text.trim() ? parseOnlyMonsterSales(text) : []),

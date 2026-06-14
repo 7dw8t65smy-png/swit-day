@@ -189,7 +189,7 @@ const TABLES = [
     columns: [
       'id', 'agency_id', 'model_id', 'chatter_id', 'occurred_at', 'local_date', 'shift',
       'amount', 'fee', 'net', 'kind', 'fan_name', 'counts_for_payout', 'excluded_reason',
-      'dedup_key', 'raw_line', 'created_at', 'updated_at'
+      'manual_payout', 'dedup_key', 'raw_line', 'created_at', 'updated_at'
     ]
   }
 ] as const;

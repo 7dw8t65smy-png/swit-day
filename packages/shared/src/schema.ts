@@ -455,6 +455,7 @@ CREATE TABLE IF NOT EXISTS agency_sales (
   fan_name          TEXT,
   counts_for_payout INTEGER NOT NULL DEFAULT 1,
   excluded_reason   TEXT,
+  manual_payout     INTEGER NOT NULL DEFAULT 0,
   dedup_key         TEXT NOT NULL,
   raw_line          TEXT,
   created_at        TEXT NOT NULL,

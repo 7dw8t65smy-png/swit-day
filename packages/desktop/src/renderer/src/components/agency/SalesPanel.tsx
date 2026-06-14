@@ -102,13 +102,12 @@ export default function SalesPanel() {
     if (!confirm(`Не учитывать в ЗП все продажи на сумму $${s.amount.toFixed(2)}? Будет создано правило исключения.`)) return;
     const label = `Исключение $${s.amount.toFixed(2)}`;
     await api.createAgencyRule({ agency_id: agencyId, amount: s.amount, label });
-    const same = sales.filter((x) => Math.abs(x.amount - s.amount) < 0.005 && x.counts_for_payout);
-    await Promise.all(
-      same.map((x) => api.updateAgencySale(x.id, { counts_for_payout: 0, excluded_reason: label }))
-    );
+    // Применяем правило ко ВСЕМ продажам агентства, а не только к видимой странице.
+    const res = await api.recomputeAgencySales(agencyId);
     await reloadEntities(); // правила обновились
     await load();
-    pushToast({ kind: 'info', message: `Правило добавлено. Исключено продаж: ${same.length}` });
+    useAuth.getState().bumpData();
+    pushToast({ kind: 'info', message: `Правило добавлено. Пересчитано продаж: ${res.updated}` });
   }
 
   if (!agencyId) return null;
