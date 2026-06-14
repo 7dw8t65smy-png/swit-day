@@ -35,6 +35,7 @@ import type {
   WorkspaceInvite,
   WorkspaceMember,
   Agency,
+  AgencyLead,
   AgencyModel,
   AgencyChatter,
   AgencyAssignment,
@@ -521,6 +522,8 @@ export const api = {
     name: string;
     source_tz_offset?: number;
     default_percent?: number;
+    commission_percent?: number;
+    base_salary?: number;
     payout_kinds?: AgencyPayoutKinds | null;
   }) => req<Agency>('POST', '/agency/agencies', b),
   updateAgency: (
@@ -529,10 +532,26 @@ export const api = {
       name: string;
       source_tz_offset: number;
       default_percent: number;
+      commission_percent: number;
+      base_salary: number;
       payout_kinds: AgencyPayoutKinds | null;
     }>
   ) => req<Agency>('PATCH', `/agency/agencies/${id}`, b),
   deleteAgency: (id: string) => req<{ ok: true }>('DELETE', `/agency/agencies/${id}`),
+
+  agencyLeads: (agencyId: string) =>
+    req<AgencyLead[]>('GET', `/agency/leads?agency_id=${agencyId}`),
+  createAgencyLead: (b: {
+    agency_id: string;
+    name: string;
+    share_percent?: number;
+    trc20?: string | null;
+    color?: string | null;
+    notes?: string | null;
+  }) => req<AgencyLead>('POST', '/agency/leads', b),
+  updateAgencyLead: (id: string, b: Partial<AgencyLead>) =>
+    req<AgencyLead>('PATCH', `/agency/leads/${id}`, b),
+  deleteAgencyLead: (id: string) => req<{ ok: true }>('DELETE', `/agency/leads/${id}`),
 
   agencyModels: (agencyId: string) =>
     req<AgencyModel[]>('GET', `/agency/models?agency_id=${agencyId}`),

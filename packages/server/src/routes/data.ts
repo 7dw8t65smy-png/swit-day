@@ -163,7 +163,11 @@ const TABLES = [
   },
   {
     name: 'agencies',
-    columns: ['id', 'name', 'source_tz_offset', 'default_percent', 'payout_kinds', 'created_at', 'updated_at']
+    columns: ['id', 'name', 'source_tz_offset', 'default_percent', 'commission_percent', 'base_salary', 'payout_kinds', 'created_at', 'updated_at']
+  },
+  {
+    name: 'agency_leads',
+    columns: ['id', 'agency_id', 'name', 'share_percent', 'trc20', 'color', 'active', 'sort_order', 'notes', 'created_at', 'updated_at']
   },
   {
     name: 'agency_models',

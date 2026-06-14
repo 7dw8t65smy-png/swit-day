@@ -380,11 +380,30 @@ CREATE TABLE IF NOT EXISTS agencies (
   source_tz_offset  INTEGER NOT NULL DEFAULT 300,
   -- % по умолчанию для новых чаттеров (от NET).
   default_percent   REAL NOT NULL DEFAULT 5,
+  -- Комиссия агентства (пул тим-лидов): % от суммарного NET.
+  commission_percent REAL NOT NULL DEFAULT 5,
+  -- Фиксированная ставка агентства за период (отдельная строка, не делится).
+  base_salary       REAL NOT NULL DEFAULT 0,
   -- JSON AgencyPayoutKinds: какие типы продаж идут в ЗП.
   payout_kinds      TEXT,
   created_at        TEXT NOT NULL,
   updated_at        TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS agency_leads (
+  id            TEXT PRIMARY KEY,
+  agency_id     TEXT NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  share_percent REAL NOT NULL DEFAULT 0,  -- доля в пуле комиссии, %
+  trc20         TEXT,
+  color         TEXT,
+  active        INTEGER NOT NULL DEFAULT 1,
+  sort_order    INTEGER DEFAULT 0,
+  notes         TEXT,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agency_leads_agency ON agency_leads(agency_id);
 
 CREATE TABLE IF NOT EXISTS agency_models (
   id          TEXT PRIMARY KEY,

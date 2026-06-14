@@ -38,6 +38,9 @@ ensureColumn('users', 'color', 'TEXT');
 // Агентства: фиксированная смена чаттера + ручное переопределение «в ЗП».
 ensureColumn('agency_chatters', 'shift', 'TEXT');
 ensureColumn('agency_sales', 'manual_payout', 'INTEGER NOT NULL DEFAULT 0');
+// Агентства: комиссия (пул тим-лидов) + фиксированная ставка.
+ensureColumn('agencies', 'commission_percent', 'REAL NOT NULL DEFAULT 5');
+ensureColumn('agencies', 'base_salary', 'REAL NOT NULL DEFAULT 0');
 
 // Старая схема имела UNIQUE на journal_entries.date. Теперь допустимо
 // несколько записей за один день. UNIQUE в SQLite не снимается ALTER'ом —
@@ -107,7 +110,8 @@ export const WORKSPACE_TABLES = [
   'agency_chatters',
   'agency_assignments',
   'agency_payout_rules',
-  'agency_sales'
+  'agency_sales',
+  'agency_leads'
 ] as const;
 
 // Добавляет workspace_id ко всем контент-таблицам (и свежим, и старым). Колонка

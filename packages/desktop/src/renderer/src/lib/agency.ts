@@ -7,6 +7,7 @@ import type {
   Agency,
   AgencyAssignment,
   AgencyChatter,
+  AgencyLead,
   AgencyModel,
   AgencyPayoutRule
 } from '@swit/shared';
@@ -21,6 +22,7 @@ interface AgencyStoreState {
   chatters: AgencyChatter[];
   assignments: AgencyAssignment[];
   rules: AgencyPayoutRule[];
+  leads: AgencyLead[];
   loading: boolean;
   loadAgencies: () => Promise<void>;
   select: (id: string | null) => void;
@@ -52,6 +54,7 @@ export const useAgencyStore = create<AgencyStoreState>((set, get) => ({
   chatters: [],
   assignments: [],
   rules: [],
+  leads: [],
   loading: false,
 
   loadAgencies: async () => {
@@ -64,7 +67,7 @@ export const useAgencyStore = create<AgencyStoreState>((set, get) => ({
       // Выбор сменился (другое пространство/удаление) — сбрасываем сущности,
       // чтобы между loadAgencies и reloadEntities не показать чужие данные.
       writeSelected(nextSelected);
-      set({ agencies, selectedId: nextSelected, models: [], chatters: [], assignments: [], rules: [] });
+      set({ agencies, selectedId: nextSelected, models: [], chatters: [], assignments: [], rules: [], leads: [] });
     } else {
       set({ agencies, selectedId: nextSelected });
     }
@@ -73,26 +76,27 @@ export const useAgencyStore = create<AgencyStoreState>((set, get) => ({
   select: (id) => {
     if (id === get().selectedId) return;
     writeSelected(id);
-    set({ selectedId: id, models: [], chatters: [], assignments: [], rules: [] });
+    set({ selectedId: id, models: [], chatters: [], assignments: [], rules: [], leads: [] });
     void get().reloadEntities();
   },
 
   reloadEntities: async () => {
     const id = get().selectedId;
     if (!id) {
-      set({ models: [], chatters: [], assignments: [], rules: [] });
+      set({ models: [], chatters: [], assignments: [], rules: [], leads: [] });
       return;
     }
     set({ loading: true });
     try {
-      const [models, chatters, assignments, rules] = await Promise.all([
+      const [models, chatters, assignments, rules, leads] = await Promise.all([
         api.agencyModels(id),
         api.agencyChatters(id),
         api.agencyAssignments(id),
-        api.agencyPayoutRules(id)
+        api.agencyPayoutRules(id),
+        api.agencyLeads(id)
       ]);
       // Возможна гонка при быстром переключении: применяем, только если выбор не сменился.
-      if (get().selectedId === id) set({ models, chatters, assignments, rules });
+      if (get().selectedId === id) set({ models, chatters, assignments, rules, leads });
     } finally {
       set({ loading: false });
     }

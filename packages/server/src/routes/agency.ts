@@ -6,6 +6,8 @@ import type {
   Agency,
   AgencyAssignment,
   AgencyChatter,
+  AgencyLead,
+  AgencyLeadPayout,
   AgencyModel,
   AgencyPayoutKinds,
   AgencyPayoutRow,
@@ -62,7 +64,20 @@ interface AgencyInput {
   name: string;
   source_tz_offset?: number;
   default_percent?: number;
+  commission_percent?: number;
+  base_salary?: number;
   payout_kinds?: AgencyPayoutKinds | null;
+}
+
+interface LeadInput {
+  agency_id: string;
+  name: string;
+  share_percent?: number;
+  trc20?: string | null;
+  color?: string | null;
+  active?: number;
+  notes?: string | null;
+  sort_order?: number;
 }
 
 interface ModelInput {
@@ -110,13 +125,15 @@ export function registerAgency(app: FastifyInstance): void {
     const t = nowIso();
     const b = req.body;
     db.prepare(
-      `INSERT INTO agencies (id, name, source_tz_offset, default_percent, payout_kinds, created_at, updated_at, workspace_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO agencies (id, name, source_tz_offset, default_percent, commission_percent, base_salary, payout_kinds, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       b.name,
       b.source_tz_offset ?? 300,
       b.default_percent ?? 5,
+      b.commission_percent ?? 5,
+      b.base_salary ?? 0,
       b.payout_kinds ? JSON.stringify(b.payout_kinds) : null,
       t,
       t,
@@ -132,6 +149,8 @@ export function registerAgency(app: FastifyInstance): void {
       name: b.name ?? cur.name,
       source_tz_offset: b.source_tz_offset ?? cur.source_tz_offset,
       default_percent: b.default_percent ?? cur.default_percent,
+      commission_percent: b.commission_percent ?? cur.commission_percent,
+      base_salary: b.base_salary ?? cur.base_salary,
       payout_kinds:
         b.payout_kinds !== undefined
           ? b.payout_kinds
@@ -140,11 +159,13 @@ export function registerAgency(app: FastifyInstance): void {
           : cur.payout_kinds
     };
     db.prepare(
-      `UPDATE agencies SET name=?, source_tz_offset=?, default_percent=?, payout_kinds=?, updated_at=? WHERE id=?`
+      `UPDATE agencies SET name=?, source_tz_offset=?, default_percent=?, commission_percent=?, base_salary=?, payout_kinds=?, updated_at=? WHERE id=?`
     ).run(
       next.name,
       next.source_tz_offset,
       next.default_percent,
+      next.commission_percent,
+      next.base_salary,
       next.payout_kinds,
       nowIso(),
       cur.id
@@ -642,6 +663,79 @@ export function registerAgency(app: FastifyInstance): void {
     return { ok: true, updated };
   });
 
+  // ---------- Team leads (тим-лиды: делят пул комиссии) ----------
+
+  app.get<{ Querystring: { agency_id?: string } }>('/agency/leads', (req) => {
+    const ws = req.workspaceId ?? null;
+    if (req.query.agency_id) requireAgency(ws, req.query.agency_id);
+    const where = ['workspace_id IS ?'];
+    const params: unknown[] = [ws];
+    if (req.query.agency_id) {
+      where.push('agency_id = ?');
+      params.push(req.query.agency_id);
+    }
+    return db
+      .prepare(`SELECT * FROM agency_leads WHERE ${where.join(' AND ')} ORDER BY sort_order, name`)
+      .all(...params) as AgencyLead[];
+  });
+
+  app.post<{ Body: LeadInput }>('/agency/leads', (req) => {
+    const ws = req.workspaceId ?? null;
+    requireAgency(ws, req.body.agency_id);
+    const id = nanoid();
+    const t = nowIso();
+    const b = req.body;
+    db.prepare(
+      `INSERT INTO agency_leads
+       (id, agency_id, name, share_percent, trc20, color, active, sort_order, notes, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      id,
+      b.agency_id,
+      b.name,
+      b.share_percent ?? 0,
+      b.trc20 ?? null,
+      b.color ?? pickColor(),
+      b.active ?? 1,
+      b.sort_order ?? 0,
+      b.notes ?? null,
+      t,
+      t,
+      ws
+    );
+    return db.prepare('SELECT * FROM agency_leads WHERE id = ?').get(id) as AgencyLead;
+  });
+
+  app.patch<{ Params: { id: string }; Body: Partial<LeadInput> }>('/agency/leads/:id', (req) => {
+    const cur = db
+      .prepare('SELECT * FROM agency_leads WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as AgencyLead | undefined;
+    if (!cur) throw new Error('not found');
+    const n = { ...cur, ...req.body, updated_at: nowIso() };
+    db.prepare(
+      `UPDATE agency_leads SET name=?, share_percent=?, trc20=?, color=?, active=?, sort_order=?, notes=?, updated_at=? WHERE id=?`
+    ).run(
+      n.name,
+      n.share_percent,
+      n.trc20,
+      n.color,
+      n.active,
+      n.sort_order,
+      n.notes,
+      n.updated_at,
+      cur.id
+    );
+    return db.prepare('SELECT * FROM agency_leads WHERE id = ?').get(cur.id) as AgencyLead;
+  });
+
+  app.delete<{ Params: { id: string } }>('/agency/leads/:id', (req) => {
+    const r = db
+      .prepare('DELETE FROM agency_leads WHERE id = ? AND workspace_id IS ?')
+      .run(req.params.id, req.workspaceId ?? null);
+    if (r.changes === 0) throw new Error('not found');
+    return { ok: true };
+  });
+
   // ---------- Payouts (расчёт выплат за период) ----------
 
   app.get<{ Querystring: { agency_id?: string; from?: string; to?: string } }>(
@@ -694,11 +788,39 @@ export function registerAgency(app: FastifyInstance): void {
         )
         .all(...params) as { local_date: string; chatter_id: string | null; net: number }[];
 
+      // Пул комиссии агентства = commission_percent% от NET, идущего в ЗП
+      // (с учётом типов/правил), независимо от того, назначен ли чаттер.
+      const commWhere = ['workspace_id IS ?', 'agency_id = ?', 'counts_for_payout = 1'];
+      const commParams: unknown[] = [ws, agency_id];
+      if (from) { commWhere.push('local_date >= ?'); commParams.push(from); }
+      if (to) { commWhere.push('local_date <= ?'); commParams.push(to); }
+      const commRow = db
+        .prepare(`SELECT COALESCE(SUM(net), 0) AS net FROM agency_sales WHERE ${commWhere.join(' AND ')}`)
+        .get(...commParams) as { net: number };
+      const pool = +((commRow.net * agency.commission_percent) / 100).toFixed(2);
+
+      const leadRows = db
+        .prepare(
+          'SELECT * FROM agency_leads WHERE agency_id = ? AND workspace_id IS ? AND active = 1 ORDER BY sort_order, name'
+        )
+        .all(agency_id, ws) as AgencyLead[];
+      const leads: AgencyLeadPayout[] = leadRows.map((l) => ({
+        lead_id: l.id,
+        name: l.name,
+        trc20: l.trc20,
+        share_percent: l.share_percent,
+        payout: +((pool * l.share_percent) / 100).toFixed(2)
+      }));
+
       const out: AgencyPayoutSummary = {
         rows,
         by_date: byDate.map((d) => ({ ...d, net: +d.net.toFixed(2) })),
         net_total: +rows.reduce((s, r) => s + r.net_total, 0).toFixed(2),
-        payout_total: +rows.reduce((s, r) => s + r.payout, 0).toFixed(2)
+        payout_total: +rows.reduce((s, r) => s + r.payout, 0).toFixed(2),
+        commission_percent: agency.commission_percent,
+        base_salary: agency.base_salary,
+        pool,
+        leads
       };
       return out;
     }

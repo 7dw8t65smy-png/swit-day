@@ -563,8 +563,29 @@ export interface Agency {
   source_tz_offset: number;
   // % по умолчанию для новых чаттеров (от NET).
   default_percent: number;
+  // Комиссия агентства (пул тим-лидов): % от суммарного NET за период.
+  commission_percent: number;
+  // Фиксированная ставка агентства за период (напр. 750). Отдельная строка,
+  // в дележ тим-лидов по их % не входит.
+  base_salary: number;
   // JSON AgencyPayoutKinds — какие типы продаж учитываются в ЗП.
   payout_kinds: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Тим-лид агентства: делит пул комиссии (commission_percent × NET) по своему %. */
+export interface AgencyLead {
+  id: string;
+  agency_id: string;
+  name: string;
+  // Доля в пуле комиссии, % (напр. Влад 70, Никита 30).
+  share_percent: number;
+  trc20: string | null;
+  color: string | null;
+  active: number;
+  sort_order: number;
+  notes: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -678,10 +699,24 @@ export interface AgencyPayoutRow {
   payout: number;
 }
 
-/** Сводка выплат: по чаттерам + матрица «дата × чаттер». */
+/** Выплата одному тим-лиду за период (его доля в пуле комиссии). */
+export interface AgencyLeadPayout {
+  lead_id: string;
+  name: string;
+  trc20: string | null;
+  share_percent: number;
+  payout: number;
+}
+
+/** Сводка выплат: по чаттерам + матрица «дата × чаттер» + тим-лиды. */
 export interface AgencyPayoutSummary {
   rows: AgencyPayoutRow[];
   by_date: { local_date: string; chatter_id: string | null; net: number }[];
   net_total: number;
   payout_total: number;
+  // Тим-лиды и пул комиссии агентства.
+  commission_percent: number;
+  base_salary: number;
+  pool: number; // commission_percent% × net_total
+  leads: AgencyLeadPayout[];
 }

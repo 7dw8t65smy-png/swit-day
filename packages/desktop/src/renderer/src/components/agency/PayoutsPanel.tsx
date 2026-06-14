@@ -20,6 +20,7 @@ const fCls = 'h-9 px-2 rounded-md border border-border bg-surface text-xs';
 export default function PayoutsPanel() {
   const agencyId = useAgencyStore((s) => s.selectedId);
   const chatters = useAgencyStore((s) => s.chatters);
+  const storeLeads = useAgencyStore((s) => s.leads);
 
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(todayStr());
@@ -37,6 +38,16 @@ export default function PayoutsPanel() {
   useRealtimeRefetch(() => void load());
 
   const colorOf = (id: string): string => chatters.find((c) => c.id === id)?.color ?? '#888';
+  const leadColorOf = (id: string): string => storeLeads.find((l) => l.id === id)?.color ?? '#7C3AED';
+
+  function copyLeads(): void {
+    if (!data) return;
+    const lines = data.leads.map(
+      (l) => `${l.name}\t${l.payout.toFixed(2)} USDT\t${l.trc20 ?? '— нет TRC20 —'}`
+    );
+    void navigator.clipboard.writeText(lines.join('\n'));
+    pushToast({ kind: 'info', message: 'Выплаты тим-лидам скопированы' });
+  }
 
   // Матрица «дата × чаттер».
   const matrix = useMemo(() => {
@@ -76,9 +87,51 @@ export default function PayoutsPanel() {
         )}
       </div>
 
+      {/* Агентство и тим-лиды — пул комиссии + фиксированная ставка */}
+      {data && (data.leads.length > 0 || data.base_salary > 0 || data.pool > 0) && (
+        <div className="mb-6">
+          <div className="text-xs uppercase text-muted mb-1.5">Агентство и тим-лиды</div>
+          <div className="flex flex-wrap items-stretch gap-3">
+            <div className="rounded-xl border border-border bg-surface px-4 py-3 min-w-[150px]">
+              <div className="text-[11px] text-muted">Ставка агентства</div>
+              <div className="text-xl font-semibold text-ink timer-font mt-0.5">${data.base_salary.toFixed(2)}</div>
+              <div className="text-[10px] text-faint mt-0.5">фикс, не делится</div>
+            </div>
+            <div className="rounded-xl border border-border bg-surface px-4 py-3 min-w-[150px]">
+              <div className="text-[11px] text-muted">Пул комиссии · {data.commission_percent}%</div>
+              <div className="text-xl font-semibold text-accent timer-font mt-0.5">${data.pool.toFixed(2)}</div>
+              <div className="text-[10px] text-faint mt-0.5">{data.commission_percent}% × NET за период</div>
+            </div>
+            {data.leads.map((l, i) => (
+              <div
+                key={l.lead_id}
+                className="rounded-xl border border-border bg-surface px-4 py-3 min-w-[170px] lift animate-rise"
+                style={{ ['--rise-delay' as string]: `${Math.min(i, 12) * 35}ms` }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full" style={{ background: leadColorOf(l.lead_id) }} />
+                  <span className="font-medium text-ink truncate">{l.name}</span>
+                  <span className="ml-auto text-[11px] text-muted">{l.share_percent}%</span>
+                </div>
+                <div className="text-2xl font-semibold text-ink timer-font mt-1">${l.payout.toFixed(2)}</div>
+                <div className="text-[10px] text-faint mt-0.5">{l.share_percent}% от пула</div>
+                {l.trc20 && (
+                  <div className="text-[10px] text-faint font-mono truncate mt-1" title={l.trc20}>{l.trc20}</div>
+                )}
+              </div>
+            ))}
+          </div>
+          {data.leads.length > 0 && (
+            <button onClick={copyLeads} className="mt-2 text-xs text-accent hover:underline flex items-center gap-1.5">
+              <Copy size={13} /> Скопировать выплаты тим-лидам
+            </button>
+          )}
+        </div>
+      )}
+
       {!data || data.rows.length === 0 ? (
         <div className="text-sm text-faint border border-dashed border-border rounded-lg py-10 text-center">
-          За выбранный период нет начислений.
+          За выбранный период нет начислений по чаттерам.
         </div>
       ) : (
         <>
