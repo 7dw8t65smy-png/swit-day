@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { nanoid } from 'nanoid';
+import { useRealtimeRefetch } from '../hooks/useRealtimeRefetch';
 import {
   Plus,
   Copy,
@@ -16,7 +17,7 @@ import { api } from '../api';
 import { pushToast } from '../hooks/useToasts';
 import { normalizeMindMapDoc } from '../lib/mindmap/doc';
 import { getTheme } from '../lib/mindmap/themes';
-import { toSvg } from '../lib/mindmap/exporters';
+import { toSvg, safeColor } from '../lib/mindmap/exporters';
 import { normalizeBoardDoc } from '../lib/board/doc';
 import { blankCanvasContent } from '../lib/canvas/store';
 
@@ -57,8 +58,8 @@ function boardSvg(doc: BoardDoc): string | null {
     .map((e) => {
       const x = e.x - minX + pad;
       const y = e.y - minY + pad;
-      const fill = e.style?.fill ?? '#ffffff';
-      const stroke = e.style?.border ?? (e.style?.fill ? 'none' : '#cbd5e1');
+      const fill = safeColor(e.style?.fill) ?? '#ffffff';
+      const stroke = safeColor(e.style?.border) ?? (e.style?.fill ? 'none' : '#cbd5e1');
       const rx =
         e.type === 'shape' && e.style?.shape === 'ellipse' ? Math.min(e.width, e.height) / 2 : 12;
       return `<rect x="${x}" y="${y}" width="${e.width}" height="${e.height}" rx="${rx}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
@@ -116,6 +117,19 @@ const KIND_META: Record<Kind, { label: string; icon: typeof Network; route: stri
   board: { label: 'Доска', icon: LayoutDashboard, route: 'boards' }
 };
 
+// «Обновлён» в человеческом виде: сегодня / вчера / N дн. назад / дата.
+function relativeUpdated(iso: string): string {
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return '';
+  const startOfDay = (d: Date): number =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOfDay(new Date()) - startOfDay(then)) / 86_400_000);
+  if (days <= 0) return 'сегодня';
+  if (days === 1) return 'вчера';
+  if (days < 7) return `${days} дн. назад`;
+  return then.toLocaleDateString('ru-RU');
+}
+
 export default function Canvases(): JSX.Element {
   const nav = useNavigate();
   const [canvases, setCanvases] = useState<Canvas[]>([]);
@@ -142,6 +156,7 @@ export default function Canvases(): JSX.Element {
   useEffect(() => {
     void load();
   }, []);
+  useRealtimeRefetch(() => void load());
 
   // Дорогая часть (JSON.parse + генерация SVG-превью) зависит только от данных:
   // считаем один раз и не пересчитываем при смене фильтра/поиска.
@@ -181,6 +196,25 @@ export default function Canvases(): JSX.Element {
       await load();
     } catch {
       pushToast({ kind: 'error', message: 'Не удалось дублировать' });
+    }
+  }
+
+  async function rename(item: Item, title: string): Promise<void> {
+    const next = title.trim();
+    if (!next || next === item.title) return;
+    try {
+      if (item.kind === 'canvas') {
+        const row = await api.updateCanvas(item.id, { title: next });
+        setCanvases((p) => p.map((x) => (x.id === row.id ? row : x)));
+      } else if (item.kind === 'map') {
+        const row = await api.updateMap(item.id, { title: next });
+        setMaps((p) => p.map((x) => (x.id === row.id ? row : x)));
+      } else {
+        const row = await api.updateBoard(item.id, { title: next });
+        setBoards((p) => p.map((x) => (x.id === row.id ? row : x)));
+      }
+    } catch {
+      pushToast({ kind: 'error', message: 'Не удалось переименовать' });
     }
   }
 
@@ -286,6 +320,7 @@ export default function Canvases(): JSX.Element {
                 onOpen={() => nav(`/${KIND_META[item.kind].route}/${item.id}`)}
                 onDuplicate={() => duplicate(item)}
                 onDelete={() => remove(item)}
+                onRename={(title) => rename(item, title)}
               />
             ))}
           </div>
@@ -299,16 +334,25 @@ function ItemCard({
   item,
   onOpen,
   onDuplicate,
-  onDelete
+  onDelete,
+  onRename
 }: {
   item: Item;
   onOpen: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onRename: (title: string) => void;
 }): JSX.Element {
   const meta = KIND_META[item.kind];
   const Icon = meta.icon;
   const unit = item.kind === 'map' ? 'узл.' : item.kind === 'board' ? 'элем.' : 'эл.';
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(item.title);
+
+  const commit = (): void => {
+    setEditing(false);
+    onRename(draft);
+  };
   return (
     <div
       onClick={onOpen}
@@ -332,13 +376,46 @@ function ItemCard({
       </div>
 
       <div className="p-3.5">
-        <div className="font-semibold text-sm truncate">{item.title || 'Без названия'}</div>
+        {editing ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commit();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setDraft(item.title);
+                setEditing(false);
+              }
+            }}
+            className="w-full font-semibold text-sm bg-surface2 border border-accent rounded px-1.5 py-0.5 outline-none"
+          />
+        ) : (
+          <div
+            className="font-semibold text-sm truncate"
+            title="Двойной клик — переименовать"
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              setDraft(item.title);
+              setEditing(true);
+            }}
+          >
+            {item.title || 'Без названия'}
+          </div>
+        )}
         <div className="text-xs text-muted mt-1 flex items-center gap-2">
           <span>
             {item.count} {unit}
           </span>
           <span className="text-faint">·</span>
-          <span>{new Date(item.updatedAt).toLocaleDateString('ru-RU')}</span>
+          <span title={new Date(item.updatedAt).toLocaleString('ru-RU')}>
+            {relativeUpdated(item.updatedAt)}
+          </span>
         </div>
       </div>
 

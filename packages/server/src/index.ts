@@ -17,7 +17,17 @@ import { registerData } from './routes/data.js';
 import { registerMaps } from './routes/maps.js';
 import { registerBoards } from './routes/boards.js';
 import { registerCanvases } from './routes/canvases.js';
+import { registerAuth } from './routes/auth.js';
+import { registerWorkspaces } from './routes/workspaces.js';
+import { resolveToken, memberRole } from './auth.js';
+import { addClient, broadcast } from './realtime.js';
 import { backupOnStartup } from './backup.js';
+import { nanoid } from 'nanoid';
+
+// На VPS включаем многопользовательский режим (SWIT_AUTH_REQUIRED=1): тогда все
+// контент-роуты требуют токен + выбранное пространство. Локально (без флага)
+// сервер работает как раньше — одиночный режим без входа.
+const AUTH_REQUIRED = process.env.SWIT_AUTH_REQUIRED === '1';
 
 function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin || origin === 'null' || origin.startsWith('file://')) return true;
@@ -49,15 +59,144 @@ export async function startSwitServer(opts?: {
     origin: (origin, cb) => cb(null, isAllowedOrigin(origin))
   });
 
-  app.setErrorHandler((err, _req, reply) => {
+  app.setErrorHandler((err, req, reply) => {
+    // Явные «не найдено» из роутов.
     if (err.message === 'not found' || err.message.endsWith(' not found')) {
       reply.code(404).send({ error: err.message });
       return;
     }
-    reply.send(err);
+    // Нарушение ограничений БД (NOT NULL, FK и т.п.) — это ошибка данных
+    // запроса, а не сбой сервера: отвечаем 400, не раскрывая текст SQL.
+    const code = (err as { code?: string }).code ?? '';
+    if (typeof code === 'string' && code.startsWith('SQLITE_CONSTRAINT')) {
+      reply.code(400).send({ error: 'Некорректные данные запроса.' });
+      return;
+    }
+    // Fastify сам проставляет statusCode для разбора тела/валидации/размера —
+    // это тоже клиентские ошибки (4xx), пробрасываем как есть.
+    const status = err.statusCode ?? 500;
+    if (status >= 400 && status < 500) {
+      reply.code(status).send({ error: err.message });
+      return;
+    }
+    // Всё остальное — внутренняя ошибка: детали в лог сервера, наружу — общий текст.
+    req.log.error(err);
+    reply.code(500).send({ error: 'Внутренняя ошибка сервера.' });
   });
 
-  app.get('/health', () => ({ ok: true, ts: new Date().toISOString() }));
+  // Клиент пробует /health на старте: auth_required говорит, показывать ли
+  // экран входа. В одиночном режиме (флаг выключен) клиент работает как раньше.
+  app.get('/health', () => ({
+    ok: true,
+    ts: new Date().toISOString(),
+    auth_required: AUTH_REQUIRED
+  }));
+
+  // SSE-поток realtime. Аутентификация через query: ?token=...&workspace=...
+  // (EventSource не умеет слать заголовки). Сервер шлёт сигналы об изменениях
+  // в выбранном пространстве; клиент в ответ перезапрашивает нужный список.
+  app.get<{ Querystring: { token?: string; workspace?: string; client_id?: string } }>(
+    '/realtime',
+    (req, reply) => {
+      const { token, workspace } = req.query;
+      const user = token ? resolveToken(token) : null;
+      if (!user) {
+        reply.code(401).send({ error: 'Требуется вход.' });
+        return;
+      }
+      if (!workspace || !memberRole(workspace, user.id)) {
+        reply.code(403).send({ error: 'Нет доступа к пространству.' });
+        return;
+      }
+
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no'
+      });
+      reply.raw.write(`retry: 3000\n\n`);
+      reply.raw.write(`event: ready\ndata: {"ok":true}\n\n`);
+
+      const id = req.query.client_id || nanoid();
+      const remove = addClient({ id, workspaceId: workspace, reply });
+
+      // Heartbeat-комментарий держит соединение живым через прокси (Caddy).
+      const heartbeat = setInterval(() => {
+        try {
+          reply.raw.write(`: ping\n\n`);
+        } catch {
+          /* закроется по close */
+        }
+      }, 25_000);
+
+      req.raw.on('close', () => {
+        clearInterval(heartbeat);
+        remove();
+      });
+    }
+  );
+
+  // После любой успешной мутации в пространстве — рассылаем сигнал «изменилось»
+  // остальным клиентам этого пространства. Инициатор (x-client-id) исключается.
+  app.addHook('onResponse', async (req, reply) => {
+    const method = req.method;
+    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return;
+    if (reply.statusCode >= 400) return;
+    const ws = req.workspaceId;
+    if (!ws) return;
+    const resource = req.url.split('?')[0].split('/').filter(Boolean)[0];
+    if (!resource) return;
+    const clientId = req.headers['x-client-id'];
+    broadcast(
+      ws,
+      { resource, ts: new Date().toISOString() },
+      typeof clientId === 'string' ? clientId : undefined
+    );
+  });
+
+  // Аутентификация и привязка к пространству. Разрешаем токен на любом запросе
+  // (если он есть — проставляем контекст), а жёсткую проверку включаем только
+  // в многопользовательском режиме. /health и /auth/* всегда публичны.
+  app.addHook('onRequest', async (req, reply) => {
+    const path = req.url.split('?')[0];
+    // /realtime аутентифицируется сам через query-параметры (EventSource не шлёт
+    // заголовков), поэтому в общем гейте считаем его публичным.
+    const isPublic = path === '/health' || path === '/realtime' || path.startsWith('/auth/');
+
+    const authHeader = req.headers['authorization'];
+    const token =
+      typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+        ? authHeader.slice(7)
+        : undefined;
+    const user = token ? resolveToken(token) : null;
+    if (user) req.userId = user.id;
+
+    const wsHeader = req.headers['x-workspace-id'];
+    if (user && typeof wsHeader === 'string' && wsHeader) {
+      const role = memberRole(wsHeader, user.id);
+      if (role) {
+        req.workspaceId = wsHeader;
+        req.workspaceRole = role;
+      }
+    }
+
+    if (isPublic || !AUTH_REQUIRED) return;
+
+    if (!req.userId) {
+      reply.code(401).send({ error: 'Требуется вход.' });
+      return;
+    }
+    // Управление пространствами не требует выбранного пространства; контент — требует.
+    const needsWorkspace = !path.startsWith('/workspaces');
+    if (needsWorkspace && !req.workspaceId) {
+      reply.code(400).send({ error: 'Не выбрано пространство.' });
+      return;
+    }
+  });
+
+  registerAuth(app);
+  registerWorkspaces(app);
 
   registerProjects(app);
   registerTasks(app);
@@ -117,7 +256,6 @@ if (process.env.SWIT_INPROC !== '1') {
   try {
     runningApp = await startSwitServer();
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[swit-server] failed to start', err);
     process.exit(1);
   }

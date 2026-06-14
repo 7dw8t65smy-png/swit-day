@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useRealtimeRefetch } from '../hooks/useRealtimeRefetch';
 import {
   Bar,
   BarChart,
@@ -11,7 +12,7 @@ import {
   YAxis,
   Legend
 } from 'recharts';
-import { addDays, format, parseISO, startOfWeek, subDays } from 'date-fns';
+import { format, parseISO, subDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { api } from '../api';
 import type { JournalEntry, Project, Task, TaskTimeLog } from '@swit/shared';
@@ -34,6 +35,7 @@ export default function Stats() {
   useEffect(() => {
     void load();
   }, []);
+  useRealtimeRefetch(() => void load());
 
   async function load() {
     const [j, l, ts, ps] = await Promise.all([

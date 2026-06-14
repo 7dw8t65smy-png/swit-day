@@ -9,14 +9,16 @@ interface CanvasInput {
 }
 
 export function registerCanvases(app: FastifyInstance): void {
-  app.get('/canvases', () => {
-    return db.prepare('SELECT * FROM canvases ORDER BY updated_at DESC').all() as Canvas[];
+  app.get('/canvases', (req) => {
+    return db
+      .prepare('SELECT * FROM canvases WHERE workspace_id IS ? ORDER BY updated_at DESC')
+      .all(req.workspaceId ?? null) as Canvas[];
   });
 
   app.get<{ Params: { id: string } }>('/canvases/:id', (req) => {
-    const row = db.prepare('SELECT * FROM canvases WHERE id = ?').get(req.params.id) as
-      | Canvas
-      | undefined;
+    const row = db
+      .prepare('SELECT * FROM canvases WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as Canvas | undefined;
     if (!row) throw new Error('not found');
     return row;
   });
@@ -26,16 +28,16 @@ export function registerCanvases(app: FastifyInstance): void {
     const t = nowIso();
     const b = req.body;
     db.prepare(
-      `INSERT INTO canvases (id, title, content, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(id, b.title, b.content, t, t);
+      `INSERT INTO canvases (id, title, content, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(id, b.title, b.content, t, t, req.workspaceId ?? null);
     return db.prepare('SELECT * FROM canvases WHERE id = ?').get(id) as Canvas;
   });
 
   app.put<{ Params: { id: string }; Body: Partial<CanvasInput> }>('/canvases/:id', (req) => {
-    const cur = db.prepare('SELECT * FROM canvases WHERE id = ?').get(req.params.id) as
-      | Canvas
-      | undefined;
+    const cur = db
+      .prepare('SELECT * FROM canvases WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as Canvas | undefined;
     if (!cur) throw new Error('not found');
     const next = { ...cur, ...req.body, updated_at: nowIso() };
     db.prepare(`UPDATE canvases SET title=?, content=?, updated_at=? WHERE id=?`).run(
@@ -48,21 +50,24 @@ export function registerCanvases(app: FastifyInstance): void {
   });
 
   app.delete<{ Params: { id: string } }>('/canvases/:id', (req) => {
-    db.prepare('DELETE FROM canvases WHERE id = ?').run(req.params.id);
+    const r = db
+      .prepare('DELETE FROM canvases WHERE id = ? AND workspace_id IS ?')
+      .run(req.params.id, req.workspaceId ?? null);
+    if (r.changes === 0) throw new Error('not found');
     return { ok: true };
   });
 
   app.post<{ Params: { id: string } }>('/canvases/:id/duplicate', (req) => {
-    const cur = db.prepare('SELECT * FROM canvases WHERE id = ?').get(req.params.id) as
-      | Canvas
-      | undefined;
+    const cur = db
+      .prepare('SELECT * FROM canvases WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as Canvas | undefined;
     if (!cur) throw new Error('not found');
     const id = nanoid();
     const t = nowIso();
     db.prepare(
-      `INSERT INTO canvases (id, title, content, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(id, `${cur.title} (копия)`, cur.content, t, t);
+      `INSERT INTO canvases (id, title, content, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(id, `${cur.title} (копия)`, cur.content, t, t, req.workspaceId ?? null);
     return db.prepare('SELECT * FROM canvases WHERE id = ?').get(id) as Canvas;
   });
 }

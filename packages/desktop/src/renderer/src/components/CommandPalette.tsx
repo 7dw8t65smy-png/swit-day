@@ -58,7 +58,7 @@ const NAV_COMMANDS: Omit<PaletteItem, 'search'>[] = [
   { id: 'nav-calendar', group: 'Переход', icon: CalIcon, label: 'Календарь', to: '/calendar' },
   { id: 'nav-journal', group: 'Переход', icon: BookOpen, label: 'Журнал', to: '/journal' },
   { id: 'nav-stats', group: 'Переход', icon: BarChart3, label: 'Статистика', to: '/stats' },
-  { id: 'nav-projects', group: 'Переход', icon: FolderKanban, label: 'Проекты', to: '/projects' },
+  { id: 'nav-projects', group: 'Переход', icon: FolderKanban, label: 'Проекты', to: '/tasks' },
   { id: 'nav-playbooks', group: 'Переход', icon: ListChecks, label: 'Регламенты', to: '/playbooks' },
   { id: 'nav-finance', group: 'Переход', icon: Wallet, label: 'Расходы', to: '/finance' },
   { id: 'nav-settings', group: 'Переход', icon: Gear, label: 'Настройки', to: '/settings' }
@@ -195,7 +195,7 @@ export default function CommandPalette(): ReactNode {
       icon: FolderKanban,
       label: p.name,
       hint: p.description ?? undefined,
-      to: '/projects',
+      to: '/tasks',
       search: `${p.name} ${p.description ?? ''}`.toLowerCase()
     }));
 

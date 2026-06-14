@@ -27,14 +27,62 @@ import type {
   Transaction,
   TransactionKind,
   TransactionSummary,
-  WorkSession
+  WorkSession,
+  AuthResult,
+  User,
+  Workspace,
+  WorkspaceWithRole,
+  WorkspaceInvite,
+  WorkspaceMember
 } from '@swit/shared';
 import { pushToast } from './hooks/useToasts';
 
 const DEFAULT_URL = 'http://127.0.0.1:47821';
 
-let baseUrl: string | null = null;
+let baseUrl = DEFAULT_URL;
 let bearer: string | null = null;
+let activeWorkspaceId: string | null = null;
+
+// Стабильный id клиента на время сессии окна. Сервер шлёт realtime-события
+// всем в пространстве, КРОМЕ инициатора (по этому заголовку) — чтобы машина,
+// сделавшая изменение, не делала лишний рефетч.
+const CLIENT_ID =
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `c_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+export function getClientId(): string {
+  return CLIENT_ID;
+}
+
+/** Настраивает базовый адрес, токен и активное пространство для всех запросов. */
+export function configureApi(s: {
+  serverUrl?: string;
+  token?: string | null;
+  workspaceId?: string | null;
+}): void {
+  if (s.serverUrl !== undefined) baseUrl = s.serverUrl.trim() || DEFAULT_URL;
+  if (s.token !== undefined) bearer = s.token;
+  if (s.workspaceId !== undefined) activeWorkspaceId = s.workspaceId;
+}
+
+export function getApiConfig(): {
+  serverUrl: string;
+  token: string | null;
+  workspaceId: string | null;
+} {
+  return { serverUrl: baseUrl, token: bearer, workspaceId: activeWorkspaceId };
+}
+
+/** URL для EventSource (realtime). null, если нет токена/пространства. */
+export function realtimeUrl(): string | null {
+  if (!bearer || !activeWorkspaceId) return null;
+  const u = new URL('/realtime', baseUrl);
+  u.searchParams.set('token', bearer);
+  u.searchParams.set('workspace', activeWorkspaceId);
+  u.searchParams.set('client_id', CLIENT_ID);
+  return u.toString();
+}
 
 export interface DataImportResult {
   ok: true;
@@ -48,27 +96,19 @@ export interface BackupInfo {
   created_at: string;
 }
 
-async function url(): Promise<string> {
-  if (baseUrl) return baseUrl;
-  // Try localStorage override (set by Settings page after save).
-  const override =
-    typeof localStorage !== 'undefined' ? localStorage.getItem('swit:backend_url') : null;
-  if (override) {
-    baseUrl = override;
-    bearer = localStorage.getItem('swit:backend_token');
-    return baseUrl;
-  }
-  if (typeof window !== 'undefined' && window.swit?.getServerUrl) {
-    baseUrl = await window.swit.getServerUrl();
-  } else {
-    baseUrl = DEFAULT_URL;
-  }
-  return baseUrl;
+export interface HealthInfo {
+  ok: boolean;
+  ts: string;
+  auth_required?: boolean;
 }
 
+/** Совместимость: ручной override адреса/токена из Настроек (localStorage). */
 export function resetApiUrl(): void {
-  baseUrl = null;
-  bearer = null;
+  if (typeof localStorage === 'undefined') return;
+  const overrideUrl = localStorage.getItem('swit:backend_url');
+  const overrideToken = localStorage.getItem('swit:backend_token');
+  if (overrideUrl) baseUrl = overrideUrl;
+  if (overrideToken) bearer = overrideToken;
 }
 
 // Короткое, человеческое сообщение об ошибке по HTTP-статусу.
@@ -83,14 +123,14 @@ function friendlyHttpMessage(status: number): string {
 }
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const base = await url();
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { 'X-Client-Id': CLIENT_ID };
   if (body) headers['Content-Type'] = 'application/json';
   if (bearer) headers['Authorization'] = `Bearer ${bearer}`;
+  if (activeWorkspaceId) headers['X-Workspace-Id'] = activeWorkspaceId;
 
   let res: Response;
   try {
-    res = await fetch(base + path, {
+    res = await fetch(baseUrl + path, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined
@@ -116,6 +156,77 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   }
   return res.json() as Promise<T>;
 }
+
+// Запрос без авто-тоста: вызывающий сам решает, как показать ошибку
+// (вход/регистрация/инвайты — там нужны точные сообщения сервера).
+export interface RawResult<T> {
+  ok: boolean;
+  status: number;
+  data: T | null;
+  error: string | null;
+}
+
+async function rawReq<T>(method: string, path: string, body?: unknown): Promise<RawResult<T>> {
+  const headers: Record<string, string> = { 'X-Client-Id': CLIENT_ID };
+  if (body) headers['Content-Type'] = 'application/json';
+  if (bearer) headers['Authorization'] = `Bearer ${bearer}`;
+  if (activeWorkspaceId) headers['X-Workspace-Id'] = activeWorkspaceId;
+  try {
+    const res = await fetch(baseUrl + path, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined
+    });
+    let json: unknown = null;
+    try {
+      json = await res.json();
+    } catch {
+      /* пустой ответ */
+    }
+    if (!res.ok) {
+      const error =
+        json && typeof json === 'object' && 'error' in json
+          ? String((json as { error: unknown }).error)
+          : `Ошибка ${res.status}`;
+      return { ok: false, status: res.status, data: null, error };
+    }
+    return { ok: true, status: res.status, data: json as T, error: null };
+  } catch {
+    return { ok: false, status: 0, data: null, error: 'Нет связи с сервером.' };
+  }
+}
+
+// --- Аутентификация и пространства (UI обрабатывает ошибки сам) ---
+export const authApi = {
+  // Пробуем /health у указанного (или текущего) адреса — узнаём, нужен ли вход.
+  health: async (serverUrl?: string): Promise<HealthInfo | null> => {
+    const base = serverUrl?.trim() || baseUrl;
+    try {
+      const res = await fetch(`${base.replace(/\/$/, '')}/health`);
+      if (!res.ok) return null;
+      return (await res.json()) as HealthInfo;
+    } catch {
+      return null;
+    }
+  },
+  register: (b: { handle: string; display_name?: string; password: string }) =>
+    rawReq<AuthResult>('POST', '/auth/register', b),
+  login: (b: { handle: string; password: string }) =>
+    rawReq<AuthResult>('POST', '/auth/login', b),
+  me: () => rawReq<{ user: User; workspaces: WorkspaceWithRole[] }>('GET', '/auth/me'),
+  logout: () => rawReq<{ ok: true }>('POST', '/auth/logout'),
+  listWorkspaces: () => rawReq<WorkspaceWithRole[]>('GET', '/workspaces'),
+  createWorkspace: (name: string) => rawReq<Workspace>('POST', '/workspaces', { name }),
+  createInvite: (workspaceId: string, b: { expires_in_days?: number; max_uses?: number } = {}) =>
+    rawReq<WorkspaceInvite>('POST', `/workspaces/${workspaceId}/invite`, b),
+  joinWorkspace: (code: string) => rawReq<Workspace>('POST', '/workspaces/join', { code }),
+  listMembers: (workspaceId: string) =>
+    rawReq<WorkspaceMember[]>('GET', `/workspaces/${workspaceId}/members`),
+  removeMember: (workspaceId: string, userId: string) =>
+    rawReq<{ ok: true }>('DELETE', `/workspaces/${workspaceId}/members/${userId}`),
+  leaveWorkspace: (workspaceId: string) =>
+    rawReq<{ ok: true }>('POST', `/workspaces/${workspaceId}/leave`)
+};
 
 export const api = {
   // data backup

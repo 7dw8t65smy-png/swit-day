@@ -151,6 +151,14 @@ const TABLES = [
   {
     name: 'mind_maps',
     columns: ['id', 'title', 'content', 'theme', 'created_at', 'updated_at']
+  },
+  {
+    name: 'boards',
+    columns: ['id', 'title', 'content', 'created_at', 'updated_at']
+  },
+  {
+    name: 'canvases',
+    columns: ['id', 'title', 'content', 'created_at', 'updated_at']
   }
 ] as const;
 
@@ -186,16 +194,20 @@ function settingsRows(settings: DataExport['settings']): { key: string; value: s
 }
 
 export function registerData(app: FastifyInstance): void {
-  app.get('/data/export', () => {
+  app.get('/data/export', (req) => {
     const out: DataExport = {
       exported_at: new Date().toISOString(),
       version: 1
     };
 
+    const ws = req.workspaceId ?? null;
     for (const table of TABLES) {
-      out[table.name] = db.prepare(`SELECT * FROM ${table.name}`).all() as Record<string, unknown>[];
+      out[table.name] = db
+        .prepare(`SELECT * FROM ${table.name} WHERE workspace_id IS ?`)
+        .all(ws) as Record<string, unknown>[];
     }
 
+    // Настройки пока глобальные (не привязаны к пространству) — кладём как есть.
     const settings = db.prepare('SELECT key, value FROM settings').all() as { key: string; value: string }[];
     out.settings = Object.fromEntries(settings.map((row) => [row.key, row.value]));
     return out;
@@ -204,16 +216,21 @@ export function registerData(app: FastifyInstance): void {
   app.post<{ Body: DataExport }>('/data/import', (req) => {
     const body = req.body ?? {};
     const counts: Record<string, number> = {};
+    const ws = req.workspaceId ?? null;
 
     const tx = db.transaction(() => {
       for (const table of TABLES) {
-        const placeholders = table.columns.map(() => '?').join(', ');
+        // Каждую импортируемую строку штампуем активным пространством: исходный
+        // экспорт мог быть из одиночного режима (без workspace_id) или из другого
+        // пространства — данные всегда ложатся в то, куда импортируем.
+        const cols = [...table.columns, 'workspace_id'];
+        const placeholders = cols.map(() => '?').join(', ');
         const stmt = db.prepare(
-          `INSERT OR REPLACE INTO ${table.name} (${table.columns.join(', ')}) VALUES (${placeholders})`
+          `INSERT OR REPLACE INTO ${table.name} (${cols.join(', ')}) VALUES (${placeholders})`
         );
         let inserted = 0;
         for (const row of rowsFor(table.name, body)) {
-          stmt.run(...table.columns.map((column) => row[column] ?? null));
+          stmt.run(...table.columns.map((column) => row[column] ?? null), ws);
           inserted++;
         }
         counts[table.name] = inserted;
@@ -249,14 +266,20 @@ export function registerData(app: FastifyInstance): void {
     return { ok: true, file };
   });
 
-  app.delete('/data', () => {
+  app.delete('/data', (req) => {
     const counts: Record<string, number> = {};
+    const ws = req.workspaceId ?? null;
     const tx = db.transaction(() => {
+      // Чистим ТОЛЬКО активное пространство — нельзя задеть данные других.
       for (const table of [...TABLES].reverse()) {
-        const result = db.prepare(`DELETE FROM ${table.name}`).run();
+        const result = db.prepare(`DELETE FROM ${table.name} WHERE workspace_id IS ?`).run(ws);
         counts[table.name] = result.changes;
       }
-      counts.settings = db.prepare('DELETE FROM settings').run().changes;
+      // Настройки глобальные; сбрасываем их лишь в одиночном режиме (ws == null),
+      // чтобы в команде один участник не обнулил оформление всем.
+      if (ws === null) {
+        counts.settings = db.prepare('DELETE FROM settings').run().changes;
+      }
     });
 
     tx();

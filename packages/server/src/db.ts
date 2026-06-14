@@ -72,6 +72,47 @@ migrateJournalDropUnique();
 
 db.exec(SCHEMA_SQL);
 
+// Контент-таблицы, разделяемые по пространствам (workspace). Один источник правды
+// для миграции колонки и для scoping-хелперов в роутах.
+export const WORKSPACE_TABLES = [
+  'projects',
+  'tasks',
+  'work_sessions',
+  'task_time_logs',
+  'notes',
+  'journal_entries',
+  'calendar_events',
+  'reminders',
+  'playbooks',
+  'playbook_steps',
+  'playbook_runs',
+  'playbook_run_steps',
+  'habits',
+  'habit_logs',
+  'habit_period_results',
+  'expense_categories',
+  'transactions',
+  'recurring_transactions',
+  'mind_maps',
+  'boards',
+  'canvases'
+] as const;
+
+// Добавляет workspace_id ко всем контент-таблицам (и свежим, и старым). Колонка
+// nullable на уровне БД — старые строки получают workspace_id при миграции данных
+// в пространство пользователя; новые строки всегда пишутся с workspace_id из роута.
+function ensureWorkspaceColumns(): void {
+  for (const table of WORKSPACE_TABLES) {
+    ensureColumn(table, 'workspace_id', 'TEXT');
+    try {
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_ws ON ${table}(workspace_id)`);
+    } catch {
+      /* индекс уже есть / таблица отсутствует — пропускаем */
+    }
+  }
+}
+ensureWorkspaceColumns();
+
 // One-off cleanup: ранее auto-miss проставлял пропуски за даты до создания
 // рутины (баг). Чистим эти записи. После исправления логика их больше
 // не создаёт — миграция остаётся безопасным no-op для свежих БД.

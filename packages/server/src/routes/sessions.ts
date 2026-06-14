@@ -10,8 +10,8 @@ export function registerSessions(app: FastifyInstance): void {
   app.get<{ Querystring: { date?: string } }>('/sessions', (req) => {
     const date = req.query.date ?? today();
     return db
-      .prepare('SELECT * FROM work_sessions WHERE date = ? ORDER BY started_at')
-      .all(date) as WorkSession[];
+      .prepare('SELECT * FROM work_sessions WHERE workspace_id IS ? AND date = ? ORDER BY started_at')
+      .all(req.workspaceId ?? null, date) as WorkSession[];
   });
 
   // Day totals — sums durations of CLOSED sessions only.
@@ -19,9 +19,13 @@ export function registerSessions(app: FastifyInstance): void {
     const date = req.query.date ?? today();
     const rows = db
       .prepare(
-        `SELECT type, started_at, ended_at FROM work_sessions WHERE date = ? ORDER BY started_at`
+        `SELECT type, started_at, ended_at FROM work_sessions WHERE workspace_id IS ? AND date = ? ORDER BY started_at`
       )
-      .all(date) as { type: SessionType; started_at: string; ended_at: string | null }[];
+      .all(req.workspaceId ?? null, date) as {
+      type: SessionType;
+      started_at: string;
+      ended_at: string | null;
+    }[];
 
     const closed: Record<SessionType, number> = { work: 0, break: 0, pause: 0 };
     const segments = [];
@@ -54,8 +58,8 @@ export function registerSessions(app: FastifyInstance): void {
 
   // task_time_logs (read-only)
   app.get<{ Querystring: { task_id?: string; date?: string } }>('/time-logs', (req) => {
-    const where: string[] = [];
-    const params: unknown[] = [];
+    const where: string[] = ['workspace_id IS ?'];
+    const params: unknown[] = [req.workspaceId ?? null];
     if (req.query.task_id) {
       where.push('task_id = ?');
       params.push(req.query.task_id);

@@ -39,10 +39,10 @@ function periodsForHabit(habit_id: string): HabitPeriodResult[] {
 }
 
 export function registerHabits(app: FastifyInstance): void {
-  app.get('/habits', () => {
+  app.get('/habits', (req) => {
     return db
-      .prepare('SELECT * FROM habits ORDER BY archived, sort_order, created_at')
-      .all() as Habit[];
+      .prepare('SELECT * FROM habits WHERE workspace_id IS ? ORDER BY archived, sort_order, created_at')
+      .all(req.workspaceId ?? null) as Habit[];
   });
 
   app.post<{ Body: HabitInput }>('/habits', (req) => {
@@ -51,8 +51,8 @@ export function registerHabits(app: FastifyInstance): void {
     const b = req.body;
     db.prepare(
       `INSERT INTO habits
-       (id, title, description, icon, color, cadence, cadence_config, target_count, remind_time, confirm_window_h, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, title, description, icon, color, cadence, cadence_config, target_count, remind_time, confirm_window_h, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       b.title,
@@ -65,7 +65,8 @@ export function registerHabits(app: FastifyInstance): void {
       b.remind_time ?? null,
       b.confirm_window_h ?? 6,
       t,
-      t
+      t,
+      req.workspaceId ?? null
     );
     return getHabit(id) as Habit;
   });
@@ -74,7 +75,9 @@ export function registerHabits(app: FastifyInstance): void {
     Params: { id: string };
     Body: Partial<HabitInput> & { archived?: number; sort_order?: number };
   }>('/habits/:id', (req) => {
-    const cur = getHabit(req.params.id);
+    const cur = db
+      .prepare('SELECT * FROM habits WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as Habit | undefined;
     if (!cur) throw new Error('not found');
     const n = { ...cur, ...req.body, updated_at: nowIso() };
     db.prepare(
@@ -101,7 +104,16 @@ export function registerHabits(app: FastifyInstance): void {
   });
 
   app.delete<{ Params: { id: string } }>('/habits/:id', (req) => {
-    db.prepare('DELETE FROM habits WHERE id = ?').run(req.params.id);
+    const owned = db
+      .prepare('SELECT id FROM habits WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null);
+    if (!owned) throw new Error('not found');
+    const tx = db.transaction((id: string) => {
+      db.prepare('DELETE FROM habit_logs WHERE habit_id = ?').run(id);
+      db.prepare('DELETE FROM habit_period_results WHERE habit_id = ?').run(id);
+      db.prepare('DELETE FROM habits WHERE id = ?').run(id);
+    });
+    tx(req.params.id);
     return { ok: true };
   });
 
@@ -111,12 +123,12 @@ export function registerHabits(app: FastifyInstance): void {
     '/habit-logs',
     (req) => {
       const { from, to, habit_id } = req.query;
-      const where: string[] = [];
-      const params: unknown[] = [];
+      const where: string[] = ['workspace_id IS ?'];
+      const params: unknown[] = [req.workspaceId ?? null];
       if (habit_id) { where.push('habit_id = ?'); params.push(habit_id); }
       if (from) { where.push('date >= ?'); params.push(from); }
       if (to) { where.push('date <= ?'); params.push(to); }
-      const sql = `SELECT * FROM habit_logs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY date DESC`;
+      const sql = `SELECT * FROM habit_logs WHERE ${where.join(' AND ')} ORDER BY date DESC`;
       return db.prepare(sql).all(...params) as HabitLog[];
     }
   );
@@ -134,15 +146,20 @@ export function registerHabits(app: FastifyInstance): void {
     const { habit_id } = req.body;
     const date = req.body.date ?? today();
     const delta = req.body.delta ?? 1;
+    const ws = req.workspaceId ?? null;
+    const owned = db
+      .prepare('SELECT id FROM habits WHERE id = ? AND workspace_id IS ?')
+      .get(habit_id, ws);
+    if (!owned) throw new Error('not found');
     const existing = db
-      .prepare('SELECT * FROM habit_logs WHERE habit_id = ? AND date = ?')
-      .get(habit_id, date) as HabitLog | undefined;
+      .prepare('SELECT * FROM habit_logs WHERE habit_id = ? AND date = ? AND workspace_id IS ?')
+      .get(habit_id, date, ws) as HabitLog | undefined;
     if (!existing) {
       const id = nanoid();
       db.prepare(
-        `INSERT INTO habit_logs (id, habit_id, date, count, status, note, created_at)
-         VALUES (?, ?, ?, ?, 'done', ?, ?)`
-      ).run(id, habit_id, date, Math.max(0, delta), req.body.note ?? null, nowIso());
+        `INSERT INTO habit_logs (id, habit_id, date, count, status, note, created_at, workspace_id)
+         VALUES (?, ?, ?, ?, 'done', ?, ?, ?)`
+      ).run(id, habit_id, date, Math.max(0, delta), req.body.note ?? null, nowIso(), ws);
       return db.prepare('SELECT * FROM habit_logs WHERE id = ?').get(id) as HabitLog;
     }
     if (existing.status === 'missed') {
@@ -169,9 +186,14 @@ export function registerHabits(app: FastifyInstance): void {
     (req) => {
       const habit_id = req.body.habit_id;
       const date = req.body.date ?? today();
+      const ws = req.workspaceId ?? null;
+      const owned = db
+        .prepare('SELECT id FROM habits WHERE id = ? AND workspace_id IS ?')
+        .get(habit_id, ws);
+      if (!owned) throw new Error('not found');
       const existing = db
-        .prepare('SELECT * FROM habit_logs WHERE habit_id = ? AND date = ?')
-        .get(habit_id, date) as HabitLog | undefined;
+        .prepare('SELECT * FROM habit_logs WHERE habit_id = ? AND date = ? AND workspace_id IS ?')
+        .get(habit_id, date, ws) as HabitLog | undefined;
       if (existing) {
         db.prepare(
           `UPDATE habit_logs SET status = 'missed', count = 0, note = COALESCE(?, note) WHERE id = ?`
@@ -180,16 +202,18 @@ export function registerHabits(app: FastifyInstance): void {
       }
       const id = nanoid();
       db.prepare(
-        `INSERT INTO habit_logs (id, habit_id, date, count, status, note, created_at)
-         VALUES (?, ?, ?, 0, 'missed', ?, ?)`
-      ).run(id, habit_id, date, req.body.note ?? null, nowIso());
+        `INSERT INTO habit_logs (id, habit_id, date, count, status, note, created_at, workspace_id)
+         VALUES (?, ?, ?, 0, 'missed', ?, ?, ?)`
+      ).run(id, habit_id, date, req.body.note ?? null, nowIso(), ws);
       return db.prepare('SELECT * FROM habit_logs WHERE id = ?').get(id) as HabitLog;
     }
   );
 
   /** Удаление лога по id (полный откат отметки). */
   app.delete<{ Params: { id: string } }>('/habit-logs/:id', (req) => {
-    const r = db.prepare('DELETE FROM habit_logs WHERE id = ?').run(req.params.id);
+    const r = db
+      .prepare('DELETE FROM habit_logs WHERE id = ? AND workspace_id IS ?')
+      .run(req.params.id, req.workspaceId ?? null);
     if (r.changes === 0) throw new Error('not found');
     return { ok: true };
   });
@@ -199,9 +223,14 @@ export function registerHabits(app: FastifyInstance): void {
     Body: { habit_id: string; date: string; count: number; note?: string | null };
   }>('/habit-logs', (req) => {
     const { habit_id, date, count } = req.body;
+    const ws = req.workspaceId ?? null;
+    const owned = db
+      .prepare('SELECT id FROM habits WHERE id = ? AND workspace_id IS ?')
+      .get(habit_id, ws);
+    if (!owned) throw new Error('not found');
     const existing = db
-      .prepare('SELECT * FROM habit_logs WHERE habit_id = ? AND date = ?')
-      .get(habit_id, date) as HabitLog | undefined;
+      .prepare('SELECT * FROM habit_logs WHERE habit_id = ? AND date = ? AND workspace_id IS ?')
+      .get(habit_id, date, ws) as HabitLog | undefined;
     if (count <= 0) {
       if (existing) db.prepare('DELETE FROM habit_logs WHERE id = ?').run(existing.id);
       return { ok: true, deleted: true };
@@ -214,20 +243,20 @@ export function registerHabits(app: FastifyInstance): void {
     }
     const id = nanoid();
     db.prepare(
-      `INSERT INTO habit_logs (id, habit_id, date, count, status, note, created_at)
-       VALUES (?, ?, ?, ?, 'done', ?, ?)`
-    ).run(id, habit_id, date, count, req.body.note ?? null, nowIso());
+      `INSERT INTO habit_logs (id, habit_id, date, count, status, note, created_at, workspace_id)
+       VALUES (?, ?, ?, ?, 'done', ?, ?, ?)`
+    ).run(id, habit_id, date, count, req.body.note ?? null, nowIso(), ws);
     return db.prepare('SELECT * FROM habit_logs WHERE id = ?').get(id) as HabitLog;
   });
 
   // ---- Period results (для weekly_n / monthly_day) ----
 
   app.get<{ Querystring: { habit_id?: string } }>('/habit-period-results', (req) => {
-    const where: string[] = [];
-    const params: unknown[] = [];
+    const where: string[] = ['workspace_id IS ?'];
+    const params: unknown[] = [req.workspaceId ?? null];
     if (req.query.habit_id) { where.push('habit_id = ?'); params.push(req.query.habit_id); }
     const sql = `SELECT * FROM habit_period_results
-                 ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+                 WHERE ${where.join(' AND ')}
                  ORDER BY period_start DESC`;
     return db.prepare(sql).all(...params) as HabitPeriodResult[];
   });
@@ -258,9 +287,9 @@ export function registerHabits(app: FastifyInstance): void {
         if (existing) continue;
         if (!isWindowExpired(h, d, now)) continue;
         db.prepare(
-          `INSERT INTO habit_logs (id, habit_id, date, count, status, note, created_at)
-           VALUES (?, ?, ?, 0, 'missed', NULL, ?)`
-        ).run(nanoid(), h.id, dateStr, nowIso());
+          `INSERT INTO habit_logs (id, habit_id, date, count, status, note, created_at, workspace_id)
+           VALUES (?, ?, ?, 0, 'missed', NULL, ?, ?)`
+        ).run(nanoid(), h.id, dateStr, nowIso(), habitWs(h));
         inserted++;
       }
     }
@@ -296,9 +325,9 @@ export function registerHabits(app: FastifyInstance): void {
           const status = count >= target ? 'done' : 'missed';
           db.prepare(
             `INSERT INTO habit_period_results
-             (id, habit_id, period_kind, period_start, status, count_actual, target, created_at)
-             VALUES (?, ?, 'week', ?, ?, ?, ?, ?)`
-          ).run(nanoid(), h.id, periodStart, status, count, target, nowIso());
+             (id, habit_id, period_kind, period_start, status, count_actual, target, created_at, workspace_id)
+             VALUES (?, ?, 'week', ?, ?, ?, ?, ?, ?)`
+          ).run(nanoid(), h.id, periodStart, status, count, target, nowIso(), habitWs(h));
           inserted++;
         }
       } else if (h.cadence === 'monthly_day') {
@@ -319,9 +348,9 @@ export function registerHabits(app: FastifyInstance): void {
           const status = count >= 1 ? 'done' : 'missed';
           db.prepare(
             `INSERT INTO habit_period_results
-             (id, habit_id, period_kind, period_start, status, count_actual, target, created_at)
-             VALUES (?, ?, 'month', ?, ?, ?, 1, ?)`
-          ).run(nanoid(), h.id, periodStart, status, count, nowIso());
+             (id, habit_id, period_kind, period_start, status, count_actual, target, created_at, workspace_id)
+             VALUES (?, ?, 'month', ?, ?, ?, 1, ?, ?)`
+          ).run(nanoid(), h.id, periodStart, status, count, nowIso(), habitWs(h));
           inserted++;
         }
       }
@@ -332,15 +361,19 @@ export function registerHabits(app: FastifyInstance): void {
   // ---- Stats ----
 
   app.get<{ Params: { id: string } }>('/habits/:id/stats', (req) => {
-    const h = getHabit(req.params.id);
+    const h = db
+      .prepare('SELECT * FROM habits WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as Habit | undefined;
     if (!h) throw new Error('not found');
     const logs = logsForHabit(h.id);
     const periods = periodsForHabit(h.id);
     return computeHabitStats(h, logs, periods, new Date()) as HabitStats;
   });
 
-  app.get('/habits-stats', () => {
-    const habits = db.prepare('SELECT * FROM habits WHERE archived = 0').all() as Habit[];
+  app.get('/habits-stats', (req) => {
+    const habits = db
+      .prepare('SELECT * FROM habits WHERE archived = 0 AND workspace_id IS ?')
+      .all(req.workspaceId ?? null) as Habit[];
     const now = new Date();
     const out: Record<string, HabitStats> = {};
     for (const h of habits) {
@@ -354,6 +387,11 @@ export function registerHabits(app: FastifyInstance): void {
 
 function ymdLocal(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Пространство привычки (для фоновых вставок логов/итогов периодов). */
+function habitWs(h: Habit): string | null {
+  return (h as { workspace_id?: string | null }).workspace_id ?? null;
 }
 
 /** Локальная дата создания рутины (YYYY-MM-DD). До неё ничего не считаем. */

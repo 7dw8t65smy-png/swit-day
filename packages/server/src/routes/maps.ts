@@ -11,14 +11,16 @@ interface MapInput {
 
 export function registerMaps(app: FastifyInstance): void {
   // Список карт целиком (их немного; content нужен для мини-превью в галерее).
-  app.get('/maps', () => {
-    return db.prepare('SELECT * FROM mind_maps ORDER BY updated_at DESC').all() as MindMap[];
+  app.get('/maps', (req) => {
+    return db
+      .prepare('SELECT * FROM mind_maps WHERE workspace_id IS ? ORDER BY updated_at DESC')
+      .all(req.workspaceId ?? null) as MindMap[];
   });
 
   app.get<{ Params: { id: string } }>('/maps/:id', (req) => {
-    const row = db.prepare('SELECT * FROM mind_maps WHERE id = ?').get(req.params.id) as
-      | MindMap
-      | undefined;
+    const row = db
+      .prepare('SELECT * FROM mind_maps WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as MindMap | undefined;
     if (!row) throw new Error('not found');
     return row;
   });
@@ -28,16 +30,16 @@ export function registerMaps(app: FastifyInstance): void {
     const t = nowIso();
     const b = req.body;
     db.prepare(
-      `INSERT INTO mind_maps (id, title, content, theme, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(id, b.title, b.content, b.theme ?? 'classic', t, t);
+      `INSERT INTO mind_maps (id, title, content, theme, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, b.title, b.content, b.theme ?? 'classic', t, t, req.workspaceId ?? null);
     return db.prepare('SELECT * FROM mind_maps WHERE id = ?').get(id) as MindMap;
   });
 
   app.put<{ Params: { id: string }; Body: Partial<MapInput> }>('/maps/:id', (req) => {
-    const cur = db.prepare('SELECT * FROM mind_maps WHERE id = ?').get(req.params.id) as
-      | MindMap
-      | undefined;
+    const cur = db
+      .prepare('SELECT * FROM mind_maps WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as MindMap | undefined;
     if (!cur) throw new Error('not found');
     const next = { ...cur, ...req.body, updated_at: nowIso() };
     db.prepare(`UPDATE mind_maps SET title=?, content=?, theme=?, updated_at=? WHERE id=?`).run(
@@ -51,21 +53,24 @@ export function registerMaps(app: FastifyInstance): void {
   });
 
   app.delete<{ Params: { id: string } }>('/maps/:id', (req) => {
-    db.prepare('DELETE FROM mind_maps WHERE id = ?').run(req.params.id);
+    const r = db
+      .prepare('DELETE FROM mind_maps WHERE id = ? AND workspace_id IS ?')
+      .run(req.params.id, req.workspaceId ?? null);
+    if (r.changes === 0) throw new Error('not found');
     return { ok: true };
   });
 
   app.post<{ Params: { id: string } }>('/maps/:id/duplicate', (req) => {
-    const cur = db.prepare('SELECT * FROM mind_maps WHERE id = ?').get(req.params.id) as
-      | MindMap
-      | undefined;
+    const cur = db
+      .prepare('SELECT * FROM mind_maps WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as MindMap | undefined;
     if (!cur) throw new Error('not found');
     const id = nanoid();
     const t = nowIso();
     db.prepare(
-      `INSERT INTO mind_maps (id, title, content, theme, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(id, `${cur.title} (копия)`, cur.content, cur.theme, t, t);
+      `INSERT INTO mind_maps (id, title, content, theme, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, `${cur.title} (копия)`, cur.content, cur.theme, t, t, req.workspaceId ?? null);
     return db.prepare('SELECT * FROM mind_maps WHERE id = ?').get(id) as MindMap;
   });
 }

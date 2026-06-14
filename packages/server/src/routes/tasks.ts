@@ -28,8 +28,8 @@ export function registerTasks(app: FastifyInstance): void {
     };
   }>('/tasks', (req) => {
     const { date, project_id, status, parent_task_id, top_level } = req.query;
-    const where: string[] = [];
-    const params: unknown[] = [];
+    const where: string[] = ['workspace_id IS ?'];
+    const params: unknown[] = [req.workspaceId ?? null];
     if (date) {
       where.push('due_date = ?');
       params.push(date);
@@ -58,8 +58,8 @@ export function registerTasks(app: FastifyInstance): void {
     const t = nowIso();
     const b = req.body;
     db.prepare(
-      `INSERT INTO tasks (id, title, description, project_id, parent_task_id, status, priority, difficulty, due_date, due_time, estimated_min, tags, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO tasks (id, title, description, project_id, parent_task_id, status, priority, difficulty, due_date, due_time, estimated_min, tags, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       b.title,
@@ -74,7 +74,8 @@ export function registerTasks(app: FastifyInstance): void {
       b.estimated_min ?? null,
       b.tags ?? null,
       t,
-      t
+      t,
+      req.workspaceId ?? null
     );
     return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Task;
   });
@@ -82,9 +83,9 @@ export function registerTasks(app: FastifyInstance): void {
   app.patch<{ Params: { id: string }; Body: Partial<TaskInput> & { completed_at?: string | null } }>(
     '/tasks/:id',
     (req) => {
-      const cur = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id) as
-        | Task
-        | undefined;
+      const cur = db
+        .prepare('SELECT * FROM tasks WHERE id = ? AND workspace_id IS ?')
+        .get(req.params.id, req.workspaceId ?? null) as Task | undefined;
       if (!cur) throw new Error('not found');
       const next = { ...cur, ...req.body, updated_at: nowIso() };
       if (req.body.status === 'done' && !cur.completed_at) next.completed_at = nowIso();
@@ -111,6 +112,11 @@ export function registerTasks(app: FastifyInstance): void {
   );
 
   app.delete<{ Params: { id: string } }>('/tasks/:id', (req) => {
+    const ws = req.workspaceId ?? null;
+    const owned = db
+      .prepare('SELECT id FROM tasks WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, ws);
+    if (!owned) throw new Error('not found');
     const tx = db.transaction((id: string) => {
       // Keep user-authored content and calendar history, but remove direct task links.
       db.prepare('UPDATE tasks SET parent_task_id = NULL WHERE parent_task_id = ?').run(id);

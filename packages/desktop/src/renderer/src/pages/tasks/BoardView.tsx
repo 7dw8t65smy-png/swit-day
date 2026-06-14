@@ -14,6 +14,7 @@ export function BoardView({
   onToggleArchived,
   onOpenTask,
   onChanged,
+  onPatch,
   onEditProject,
   onCreateProject,
   subtaskStats
@@ -24,6 +25,7 @@ export function BoardView({
   onToggleArchived: () => void;
   onOpenTask: (id: string) => void;
   onChanged: () => Promise<void>;
+  onPatch: (task: Task) => void;
   onEditProject: (p: Project) => void;
   onCreateProject: () => void;
   subtaskStats: { total: Map<string, number>; done: Map<string, number> };
@@ -44,8 +46,8 @@ export function BoardView({
   ];
 
   async function moveTask(taskId: string, projectId: string | null) {
-    await api.updateTask(taskId, { project_id: projectId });
-    await onChanged();
+    const updated = await api.updateTask(taskId, { project_id: projectId });
+    onPatch(updated);
   }
 
   return (
@@ -57,6 +59,7 @@ export function BoardView({
           items={col.items}
           onOpenTask={onOpenTask}
           onChanged={onChanged}
+          onPatch={onPatch}
           onDropTask={(id) => moveTask(id, col.id)}
           onEditProject={col.project ? () => onEditProject(col.project!) : undefined}
           subtaskStats={subtaskStats}
@@ -90,6 +93,7 @@ function BoardColumn({
   items,
   onOpenTask,
   onChanged,
+  onPatch,
   onDropTask,
   onEditProject,
   subtaskStats
@@ -98,6 +102,7 @@ function BoardColumn({
   items: Task[];
   onOpenTask: (id: string) => void;
   onChanged: () => Promise<void>;
+  onPatch: (task: Task) => void;
   onDropTask: (taskId: string) => Promise<void>;
   onEditProject?: () => void;
   subtaskStats: { total: Map<string, number>; done: Map<string, number> };
@@ -194,7 +199,7 @@ function BoardColumn({
             key={t.id}
             task={t}
             onClick={() => onOpenTask(t.id)}
-            onChanged={onChanged}
+            onPatch={onPatch}
             subtaskCount={subtaskStats.total.get(t.id)}
             subtaskDone={subtaskStats.done.get(t.id)}
           />

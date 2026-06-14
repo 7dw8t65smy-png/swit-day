@@ -9,13 +9,13 @@ import { formatRelativeDue } from './dueDate';
 export function TaskCard({
   task,
   onClick,
-  onChanged,
+  onPatch,
   subtaskCount,
   subtaskDone
 }: {
   task: Task;
   onClick: () => void;
-  onChanged: () => Promise<void>;
+  onPatch: (task: Task) => void;
   subtaskCount?: number;
   subtaskDone?: number;
 }) {
@@ -24,7 +24,7 @@ export function TaskCard({
     const updated = await api.updateTask(task.id, {
       status: task.status === 'done' ? 'pending' : 'done'
     });
-    await onChanged();
+    onPatch(updated);
   }
   const accent = PRIORITY_COLOR[task.priority];
   const due = task.due_date

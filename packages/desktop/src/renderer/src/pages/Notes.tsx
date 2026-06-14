@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pin, PinOff, Trash2, Plus, FileText } from 'lucide-react';
 import { api } from '../api';
 import type { Note, NoteType, Project, Task } from '@swit/shared';
+import { useRealtimeRefetch } from '../hooks/useRealtimeRefetch';
 import ProjectBadge from '../components/ProjectBadge';
 
 export default function Notes() {
@@ -16,6 +17,7 @@ export default function Notes() {
   useEffect(() => {
     void reload();
   }, []);
+  useRealtimeRefetch(() => void reload());
 
   async function reload() {
     const [ns, ps, ts] = await Promise.all([

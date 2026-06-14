@@ -71,7 +71,7 @@ export function normalizeMindMapDoc(value: unknown, fallbackRootId = 'root'): Mi
     });
   }
 
-  let rootId =
+  const rootId =
     typeof raw.rootId === 'string' && seen.has(raw.rootId)
       ? raw.rootId
       : nodes.find((n) => !n.parentId)?.id;

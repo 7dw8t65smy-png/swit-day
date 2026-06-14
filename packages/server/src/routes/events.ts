@@ -19,28 +19,32 @@ interface EventInput {
 export function registerEvents(app: FastifyInstance): void {
   app.get<{ Querystring: { from?: string; to?: string; date?: string } }>('/events', (req) => {
     const { from, to, date } = req.query;
+    const ws = req.workspaceId ?? null;
     if (date) {
       return db
-        .prepare('SELECT * FROM calendar_events WHERE date = ? ORDER BY start_time')
-        .all(date) as CalendarEvent[];
+        .prepare('SELECT * FROM calendar_events WHERE workspace_id IS ? AND date = ? ORDER BY start_time')
+        .all(ws, date) as CalendarEvent[];
     }
     if (from && to) {
       return db
-        .prepare('SELECT * FROM calendar_events WHERE date BETWEEN ? AND ? ORDER BY date, start_time')
-        .all(from, to) as CalendarEvent[];
+        .prepare(
+          'SELECT * FROM calendar_events WHERE workspace_id IS ? AND date BETWEEN ? AND ? ORDER BY date, start_time'
+        )
+        .all(ws, from, to) as CalendarEvent[];
     }
     return db
-      .prepare('SELECT * FROM calendar_events ORDER BY date, start_time')
-      .all() as CalendarEvent[];
+      .prepare('SELECT * FROM calendar_events WHERE workspace_id IS ? ORDER BY date, start_time')
+      .all(ws) as CalendarEvent[];
   });
 
   app.post<{ Body: EventInput }>('/events', (req) => {
     const id = nanoid();
     const t = nowIso();
     const b = req.body;
+    const ws = req.workspaceId ?? null;
     db.prepare(
-      `INSERT INTO calendar_events (id, title, date, start_time, end_time, description, project_id, task_id, reminder_min, color, type, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO calendar_events (id, title, date, start_time, end_time, description, project_id, task_id, reminder_min, color, type, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       b.title,
@@ -54,16 +58,17 @@ export function registerEvents(app: FastifyInstance): void {
       b.color ?? null,
       b.type ?? 'event',
       t,
-      t
+      t,
+      ws
     );
-    syncEventReminder(id, b.title, b.date, b.start_time ?? null, b.reminder_min ?? null);
+    syncEventReminder(id, b.title, b.date, b.start_time ?? null, b.reminder_min ?? null, ws);
     return db.prepare('SELECT * FROM calendar_events WHERE id = ?').get(id) as CalendarEvent;
   });
 
   app.patch<{ Params: { id: string }; Body: Partial<EventInput> }>('/events/:id', (req) => {
-    const cur = db.prepare('SELECT * FROM calendar_events WHERE id = ?').get(req.params.id) as
-      | CalendarEvent
-      | undefined;
+    const cur = db
+      .prepare('SELECT * FROM calendar_events WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as CalendarEvent | undefined;
     if (!cur) throw new Error('not found');
     const n = { ...cur, ...req.body, updated_at: nowIso() };
     db.prepare(
@@ -82,11 +87,16 @@ export function registerEvents(app: FastifyInstance): void {
       n.updated_at,
       cur.id
     );
-    syncEventReminder(cur.id, n.title, n.date, n.start_time, n.reminder_min);
+    const ws = (cur as { workspace_id?: string | null }).workspace_id ?? null;
+    syncEventReminder(cur.id, n.title, n.date, n.start_time, n.reminder_min, ws);
     return db.prepare('SELECT * FROM calendar_events WHERE id = ?').get(cur.id) as CalendarEvent;
   });
 
   app.delete<{ Params: { id: string } }>('/events/:id', (req) => {
+    const owned = db
+      .prepare('SELECT id FROM calendar_events WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null);
+    if (!owned) throw new Error('not found');
     db.prepare('DELETE FROM reminders WHERE event_id = ?').run(req.params.id);
     db.prepare('DELETE FROM calendar_events WHERE id = ?').run(req.params.id);
     return { ok: true };
@@ -98,7 +108,8 @@ function syncEventReminder(
   title: string,
   date: string,
   startTime: string | null,
-  reminderMin: number | null
+  reminderMin: number | null,
+  workspaceId: string | null
 ): void {
   // Always remove existing reminders linked to this event, then recreate if needed.
   db.prepare('DELETE FROM reminders WHERE event_id = ?').run(eventId);
@@ -109,6 +120,6 @@ function syncEventReminder(
   when.setMinutes(when.getMinutes() - reminderMin);
   if (when.getTime() < Date.now()) return; // in the past
   db.prepare(
-    `INSERT INTO reminders (id, title, datetime, event_id, created_at) VALUES (?, ?, ?, ?, ?)`
-  ).run(nanoid(), title, when.toISOString(), eventId, nowIso());
+    `INSERT INTO reminders (id, title, datetime, event_id, created_at, workspace_id) VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(nanoid(), title, when.toISOString(), eventId, nowIso(), workspaceId);
 }

@@ -16,12 +16,12 @@ interface JournalInput {
 export function registerJournal(app: FastifyInstance): void {
   // Все записи. Сортируем по дате убыв., внутри дня — по created_at убыв.,
   // чтобы свежие сессии завершения дня шли первыми.
-  app.get('/journal', () => {
+  app.get('/journal', (req) => {
     return db
       .prepare(
-        'SELECT * FROM journal_entries ORDER BY date DESC, created_at DESC'
+        'SELECT * FROM journal_entries WHERE workspace_id IS ? ORDER BY date DESC, created_at DESC'
       )
-      .all() as JournalEntry[];
+      .all(req.workspaceId ?? null) as JournalEntry[];
   });
 
   // Все записи за указанную дату (может быть несколько — на каждое
@@ -29,17 +29,17 @@ export function registerJournal(app: FastifyInstance): void {
   app.get<{ Params: { date: string } }>('/journal/by-date/:date', (req) => {
     return db
       .prepare(
-        'SELECT * FROM journal_entries WHERE date = ? ORDER BY created_at DESC'
+        'SELECT * FROM journal_entries WHERE workspace_id IS ? AND date = ? ORDER BY created_at DESC'
       )
-      .all(req.params.date) as JournalEntry[];
+      .all(req.workspaceId ?? null, req.params.date) as JournalEntry[];
   });
 
   // Одна запись по id.
   app.get<{ Params: { id: string } }>('/journal/:id', (req) => {
     return (
       (db
-        .prepare('SELECT * FROM journal_entries WHERE id = ?')
-        .get(req.params.id) as JournalEntry | undefined) ?? null
+        .prepare('SELECT * FROM journal_entries WHERE id = ? AND workspace_id IS ?')
+        .get(req.params.id, req.workspaceId ?? null) as JournalEntry | undefined) ?? null
     );
   });
 
@@ -53,8 +53,8 @@ export function registerJournal(app: FastifyInstance): void {
     const t = nowIso();
     db.prepare(
       `INSERT INTO journal_entries
-        (id, date, what_done, reflection, mood, total_work_s, total_pause_s, tasks_done, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, date, what_done, reflection, mood, total_work_s, total_pause_s, tasks_done, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       b.date,
@@ -65,7 +65,8 @@ export function registerJournal(app: FastifyInstance): void {
       b.total_pause_s ?? null,
       b.tasks_done ?? 0,
       t,
-      t
+      t,
+      req.workspaceId ?? null
     );
     return db.prepare('SELECT * FROM journal_entries WHERE id = ?').get(id) as JournalEntry;
   });
@@ -75,8 +76,8 @@ export function registerJournal(app: FastifyInstance): void {
     '/journal/:id',
     (req, reply) => {
       const cur = db
-        .prepare('SELECT * FROM journal_entries WHERE id = ?')
-        .get(req.params.id) as JournalEntry | undefined;
+        .prepare('SELECT * FROM journal_entries WHERE id = ? AND workspace_id IS ?')
+        .get(req.params.id, req.workspaceId ?? null) as JournalEntry | undefined;
       if (!cur) return reply.code(404).send({ error: 'not_found' });
       const b = req.body ?? {};
       const n = { ...cur, ...b, updated_at: nowIso() };
@@ -103,8 +104,8 @@ export function registerJournal(app: FastifyInstance): void {
   // Удалить запись по id.
   app.delete<{ Params: { id: string } }>('/journal/:id', (req, reply) => {
     const r = db
-      .prepare('DELETE FROM journal_entries WHERE id = ?')
-      .run(req.params.id);
+      .prepare('DELETE FROM journal_entries WHERE id = ? AND workspace_id IS ?')
+      .run(req.params.id, req.workspaceId ?? null);
     if (r.changes === 0) return reply.code(404).send({ error: 'not_found' });
     return { ok: true };
   });

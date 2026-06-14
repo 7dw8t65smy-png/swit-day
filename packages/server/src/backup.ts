@@ -81,7 +81,6 @@ export async function backupOnStartup(): Promise<void> {
     }
     await createBackup();
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[backup] startup backup failed:', err);
   }
 }

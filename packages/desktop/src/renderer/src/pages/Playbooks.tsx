@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { api } from '../api';
 import type { PlaybookWithSteps, Project, Playbook } from '@swit/shared';
+import { useRealtimeRefetch } from '../hooks/useRealtimeRefetch';
 import { PlaybookList } from './playbooks/PlaybookList';
 import { PlaybooksOverview } from './playbooks/PlaybooksOverview';
 import { PlaybookDetail } from './playbooks/PlaybookDetail';
@@ -20,6 +21,7 @@ export default function Playbooks(): JSX.Element {
   useEffect(() => {
     void reload();
   }, []);
+  useRealtimeRefetch(() => void reload());
 
   async function reload(): Promise<void> {
     const [pbs, ps] = await Promise.all([api.listPlaybooks(), api.listProjects()]);

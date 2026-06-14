@@ -4,8 +4,24 @@ import { writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import Store from 'electron-store';
 import { initTray, destroyTray } from './tray.js';
 import { initReminders, destroyReminders } from './reminders.js';
+
+// Сессия многопользовательского режима: адрес сервера, токен, активное
+// пространство. Храним через electron-store (файл в userData), а НЕ в
+// localStorage рендерера — так токен недоступен из JS-контекста страницы
+// (меньше урон при XSS). encryptionKey даёт лёгкую обфускацию на диске.
+interface SwitSession {
+  serverUrl: string;
+  token: string;
+  activeWorkspaceId: string | null;
+}
+const sessionStore = new Store<{ session: SwitSession | null }>({
+  name: 'swit-session',
+  encryptionKey: 'swit-day-session-v1',
+  defaults: { session: null }
+});
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -145,7 +161,10 @@ function createWindow(): void {
     backgroundColor: '#F5F6FA',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      // Песочница рендерера включена: preload использует только contextBridge +
+      // ipcRenderer.invoke, которые работают в sandbox. Ограничивает урон от
+      // возможного XSS — рендерер не получает прямой доступ к Node API.
+      sandbox: true,
       contextIsolation: true
     }
   });
@@ -176,6 +195,25 @@ function createWindow(): void {
 
 ipcMain.handle('app:get-server-url', () => SERVER_URL);
 
+// --- Сессия многопользовательского режима ---
+ipcMain.handle('session:get', () => sessionStore.get('session'));
+ipcMain.handle('session:set', (_e, session: SwitSession | null) => {
+  if (session && typeof session.serverUrl === 'string' && typeof session.token === 'string') {
+    sessionStore.set('session', {
+      serverUrl: session.serverUrl,
+      token: session.token,
+      activeWorkspaceId: session.activeWorkspaceId ?? null
+    });
+  } else {
+    sessionStore.set('session', null);
+  }
+  return { ok: true };
+});
+ipcMain.handle('session:clear', () => {
+  sessionStore.set('session', null);
+  return { ok: true };
+});
+
 ipcMain.handle('app:open-data-folder', async () => {
   const dir = getDataDir();
   mkdirSync(dir, { recursive: true });
@@ -184,7 +222,11 @@ ipcMain.handle('app:open-data-folder', async () => {
 });
 
 ipcMain.handle('notification:show', async (_e, payload: { title: string; body?: string }) => {
-  await showAppNotification(payload.title, payload.body);
+  // IPC-данные не типизированы в рантайме — приводим к строке и ограничиваем длину.
+  const title = String(payload?.title ?? '').slice(0, 200);
+  const body = payload?.body == null ? undefined : String(payload.body).slice(0, 500);
+  if (!title) return;
+  await showAppNotification(title, body);
 });
 
 // Экспорт карты: нативный диалог сохранения + запись файла.

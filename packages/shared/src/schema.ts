@@ -316,4 +316,54 @@ CREATE TABLE IF NOT EXISTS canvases (
 );
 
 CREATE INDEX IF NOT EXISTS idx_canvases_updated ON canvases(updated_at);
+
+-- ===== Многопользовательский слой: аккаунты, пространства, доступ =====
+-- Колонка workspace_id добавляется ко всем контент-таблицам отдельной миграцией
+-- (см. ensureWorkspaceColumns в server/db.ts), чтобы покрыть и старые БД.
+
+CREATE TABLE IF NOT EXISTS users (
+  id            TEXT PRIMARY KEY,
+  handle        TEXT NOT NULL UNIQUE,          -- ник или email в нижнем регистре
+  display_name  TEXT NOT NULL,
+  password_hash TEXT NOT NULL,                 -- scrypt: salt:hash (hex)
+  created_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workspaces (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  type        TEXT NOT NULL DEFAULT 'team',    -- 'personal' | 'team'
+  owner_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workspace_members (
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role         TEXT NOT NULL DEFAULT 'member', -- 'owner' | 'member'
+  joined_at    TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ws_members_user ON workspace_members(user_id);
+
+CREATE TABLE IF NOT EXISTS workspace_invites (
+  code         TEXT PRIMARY KEY,              -- короткий код-приглашение
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  created_by   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at   TEXT,                          -- NULL = бессрочно
+  max_uses     INTEGER,                       -- NULL = без лимита
+  uses         INTEGER NOT NULL DEFAULT 0,
+  created_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  id           TEXT PRIMARY KEY,
+  user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash   TEXT NOT NULL UNIQUE,          -- sha256(token), hex
+  device       TEXT,
+  created_at   TEXT NOT NULL,
+  last_used_at TEXT,
+  expires_at   TEXT                           -- NULL = бессрочно
+);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_token ON auth_sessions(token_hash);
 `;

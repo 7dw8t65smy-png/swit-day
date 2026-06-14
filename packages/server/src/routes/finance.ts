@@ -48,13 +48,14 @@ interface RecurringInput {
 export function registerFinance(app: FastifyInstance): void {
   // ---------- Categories ----------
 
-  app.get('/expense-categories', () => {
+  app.get('/expense-categories', (req) => {
     return db
       .prepare(
         `SELECT * FROM expense_categories
+         WHERE workspace_id IS ?
          ORDER BY archived, sort_order, created_at`
       )
-      .all() as ExpenseCategory[];
+      .all(req.workspaceId ?? null) as ExpenseCategory[];
   });
 
   app.post<{ Body: CategoryInput }>('/expense-categories', (req) => {
@@ -63,8 +64,8 @@ export function registerFinance(app: FastifyInstance): void {
     const b = req.body;
     db.prepare(
       `INSERT INTO expense_categories
-       (id, name, icon, color, kind, monthly_limit, archived, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, name, icon, color, kind, monthly_limit, archived, sort_order, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       b.name,
@@ -75,7 +76,8 @@ export function registerFinance(app: FastifyInstance): void {
       b.archived ?? 0,
       b.sort_order ?? 0,
       t,
-      t
+      t,
+      req.workspaceId ?? null
     );
     return db.prepare('SELECT * FROM expense_categories WHERE id = ?').get(id) as ExpenseCategory;
   });
@@ -84,8 +86,8 @@ export function registerFinance(app: FastifyInstance): void {
     '/expense-categories/:id',
     (req) => {
       const cur = db
-        .prepare('SELECT * FROM expense_categories WHERE id = ?')
-        .get(req.params.id) as ExpenseCategory | undefined;
+        .prepare('SELECT * FROM expense_categories WHERE id = ? AND workspace_id IS ?')
+        .get(req.params.id, req.workspaceId ?? null) as ExpenseCategory | undefined;
       if (!cur) throw new Error('not found');
       const n = { ...cur, ...req.body, updated_at: nowIso() };
       db.prepare(
@@ -108,7 +110,10 @@ export function registerFinance(app: FastifyInstance): void {
   );
 
   app.delete<{ Params: { id: string } }>('/expense-categories/:id', (req) => {
-    db.prepare('DELETE FROM expense_categories WHERE id = ?').run(req.params.id);
+    const r = db
+      .prepare('DELETE FROM expense_categories WHERE id = ? AND workspace_id IS ?')
+      .run(req.params.id, req.workspaceId ?? null);
+    if (r.changes === 0) throw new Error('not found');
     return { ok: true };
   });
 
@@ -126,8 +131,8 @@ export function registerFinance(app: FastifyInstance): void {
     };
   }>('/transactions', (req) => {
     const { from, to, category_id, payment_method, kind, search, limit } = req.query;
-    const where: string[] = [];
-    const params: unknown[] = [];
+    const where: string[] = ['workspace_id IS ?'];
+    const params: unknown[] = [req.workspaceId ?? null];
     if (from) { where.push('date >= ?'); params.push(from); }
     if (to) { where.push('date <= ?'); params.push(to); }
     if (category_id) { where.push('category_id = ?'); params.push(category_id); }
@@ -151,8 +156,8 @@ export function registerFinance(app: FastifyInstance): void {
     const b = req.body;
     db.prepare(
       `INSERT INTO transactions
-       (id, amount, kind, category_id, payment_method, date, description, note, recurring_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, amount, kind, category_id, payment_method, date, description, note, recurring_id, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       Math.abs(b.amount),
@@ -164,7 +169,8 @@ export function registerFinance(app: FastifyInstance): void {
       b.note ?? null,
       b.recurring_id ?? null,
       t,
-      t
+      t,
+      req.workspaceId ?? null
     );
     return db.prepare('SELECT * FROM transactions WHERE id = ?').get(id) as Transaction;
   });
@@ -173,8 +179,8 @@ export function registerFinance(app: FastifyInstance): void {
     '/transactions/:id',
     (req) => {
       const cur = db
-        .prepare('SELECT * FROM transactions WHERE id = ?')
-        .get(req.params.id) as Transaction | undefined;
+        .prepare('SELECT * FROM transactions WHERE id = ? AND workspace_id IS ?')
+        .get(req.params.id, req.workspaceId ?? null) as Transaction | undefined;
       if (!cur) throw new Error('not found');
       const n = { ...cur, ...req.body, updated_at: nowIso() };
       db.prepare(
@@ -199,7 +205,10 @@ export function registerFinance(app: FastifyInstance): void {
   );
 
   app.delete<{ Params: { id: string } }>('/transactions/:id', (req) => {
-    db.prepare('DELETE FROM transactions WHERE id = ?').run(req.params.id);
+    const r = db
+      .prepare('DELETE FROM transactions WHERE id = ? AND workspace_id IS ?')
+      .run(req.params.id, req.workspaceId ?? null);
+    if (r.changes === 0) throw new Error('not found');
     return { ok: true };
   });
 
@@ -211,11 +220,11 @@ export function registerFinance(app: FastifyInstance): void {
 
   app.get<{ Querystring: { from?: string; to?: string } }>('/transactions/summary', (req) => {
     const { from, to } = req.query;
-    const where: string[] = [];
-    const params: unknown[] = [];
+    const where: string[] = ['workspace_id IS ?'];
+    const params: unknown[] = [req.workspaceId ?? null];
     if (from) { where.push('date >= ?'); params.push(from); }
     if (to) { where.push('date <= ?'); params.push(to); }
-    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const whereSql = `WHERE ${where.join(' AND ')}`;
 
     const totals = db
       .prepare(
@@ -258,10 +267,12 @@ export function registerFinance(app: FastifyInstance): void {
 
   // ---------- Recurring templates ----------
 
-  app.get('/recurring-transactions', () => {
+  app.get('/recurring-transactions', (req) => {
     return db
-      .prepare('SELECT * FROM recurring_transactions ORDER BY archived, created_at')
-      .all() as RecurringTransaction[];
+      .prepare(
+        'SELECT * FROM recurring_transactions WHERE workspace_id IS ? ORDER BY archived, created_at'
+      )
+      .all(req.workspaceId ?? null) as RecurringTransaction[];
   });
 
   app.post<{ Body: RecurringInput }>('/recurring-transactions', (req) => {
@@ -271,8 +282,8 @@ export function registerFinance(app: FastifyInstance): void {
     db.prepare(
       `INSERT INTO recurring_transactions
        (id, amount, kind, category_id, payment_method, description, period,
-        day_of_month, day_of_week, reminder_enabled, remind_time, archived, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        day_of_month, day_of_week, reminder_enabled, remind_time, archived, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       Math.abs(b.amount),
@@ -287,7 +298,8 @@ export function registerFinance(app: FastifyInstance): void {
       b.remind_time ?? null,
       b.archived ?? 0,
       t,
-      t
+      t,
+      req.workspaceId ?? null
     );
     return db
       .prepare('SELECT * FROM recurring_transactions WHERE id = ?')
@@ -298,8 +310,8 @@ export function registerFinance(app: FastifyInstance): void {
     '/recurring-transactions/:id',
     (req) => {
       const cur = db
-        .prepare('SELECT * FROM recurring_transactions WHERE id = ?')
-        .get(req.params.id) as RecurringTransaction | undefined;
+        .prepare('SELECT * FROM recurring_transactions WHERE id = ? AND workspace_id IS ?')
+        .get(req.params.id, req.workspaceId ?? null) as RecurringTransaction | undefined;
       if (!cur) throw new Error('not found');
       const n = { ...cur, ...req.body, updated_at: nowIso() };
       db.prepare(
@@ -331,7 +343,10 @@ export function registerFinance(app: FastifyInstance): void {
   );
 
   app.delete<{ Params: { id: string } }>('/recurring-transactions/:id', (req) => {
-    db.prepare('DELETE FROM recurring_transactions WHERE id = ?').run(req.params.id);
+    const r = db
+      .prepare('DELETE FROM recurring_transactions WHERE id = ? AND workspace_id IS ?')
+      .run(req.params.id, req.workspaceId ?? null);
+    if (r.changes === 0) throw new Error('not found');
     return { ok: true };
   });
 }

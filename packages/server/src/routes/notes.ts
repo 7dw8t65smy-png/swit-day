@@ -18,8 +18,8 @@ export function registerNotes(app: FastifyInstance): void {
     '/notes',
     (req) => {
       const { type, task_id, project_id } = req.query;
-      const where: string[] = [];
-      const params: unknown[] = [];
+      const where: string[] = ['workspace_id IS ?'];
+      const params: unknown[] = [req.workspaceId ?? null];
       if (type) {
         where.push('type = ?');
         params.push(type);
@@ -42,8 +42,8 @@ export function registerNotes(app: FastifyInstance): void {
     const t = nowIso();
     const b = req.body;
     db.prepare(
-      `INSERT INTO notes (id, content, type, task_id, project_id, date, pinned, tags, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO notes (id, content, type, task_id, project_id, date, pinned, tags, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       b.content,
@@ -54,15 +54,16 @@ export function registerNotes(app: FastifyInstance): void {
       b.pinned ?? 0,
       b.tags ?? null,
       t,
-      t
+      t,
+      req.workspaceId ?? null
     );
     return db.prepare('SELECT * FROM notes WHERE id = ?').get(id) as Note;
   });
 
   app.patch<{ Params: { id: string }; Body: Partial<NoteInput> }>('/notes/:id', (req) => {
-    const cur = db.prepare('SELECT * FROM notes WHERE id = ?').get(req.params.id) as
-      | Note
-      | undefined;
+    const cur = db
+      .prepare('SELECT * FROM notes WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as Note | undefined;
     if (!cur) throw new Error('not found');
     const next = { ...cur, ...req.body, updated_at: nowIso() };
     db.prepare(
@@ -82,7 +83,10 @@ export function registerNotes(app: FastifyInstance): void {
   });
 
   app.delete<{ Params: { id: string } }>('/notes/:id', (req) => {
-    db.prepare('DELETE FROM notes WHERE id = ?').run(req.params.id);
+    const r = db
+      .prepare('DELETE FROM notes WHERE id = ? AND workspace_id IS ?')
+      .run(req.params.id, req.workspaceId ?? null);
+    if (r.changes === 0) throw new Error('not found');
     return { ok: true };
   });
 }

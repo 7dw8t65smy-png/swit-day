@@ -493,8 +493,14 @@ export default function CanvasEditor(): JSX.Element {
       if (mod && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         const useBoardHist = onBoard || (!onMind && b.past.length > 0);
-        if (e.shiftKey) useBoardHist ? b.redo() : m.redo();
-        else useBoardHist ? b.undo() : m.undo();
+        if (e.shiftKey) {
+          if (useBoardHist) b.redo();
+          else m.redo();
+        } else if (useBoardHist) {
+          b.undo();
+        } else {
+          m.undo();
+        }
         return;
       }
       if (mod && e.key.toLowerCase() === 'g') {

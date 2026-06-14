@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { api } from '../api';
 import type { Project, Task } from '@swit/shared';
+import { useRealtimeRefetch } from '../hooks/useRealtimeRefetch';
 import TaskDrawer from '../components/TaskDrawer';
 import ProjectFormModal from '../components/ProjectFormModal';
 import { useSettings } from '../lib/settings';
@@ -28,12 +29,19 @@ export default function Tasks() {
   useEffect(() => {
     void reload();
   }, []);
+  useRealtimeRefetch(() => void reload());
 
   async function reload() {
     const [ts, ps] = await Promise.all([api.listTasks(), api.listProjects()]);
     setTasks(ts);
     setProjects(ps);
   }
+
+  // Точечное обновление одной задачи без полной перезагрузки — чтобы отметка
+  // «выполнено» и перенос между проектами были мгновенными, без мигания списка.
+  const patchTask = useCallback((updated: Task) => {
+    setTasks((cur) => cur.map((x) => (x.id === updated.id ? updated : x)));
+  }, []);
 
   const today = localDateKey();
   const projectById = useMemo(
@@ -152,6 +160,7 @@ export default function Tasks() {
             onToggleArchived={() => setShowArchived((v) => !v)}
             onOpenTask={setDrawerTaskId}
             onChanged={reload}
+            onPatch={patchTask}
             onEditProject={setProjectEdit}
             onCreateProject={() => setProjectCreate(true)}
             subtaskStats={subtaskStats}
@@ -162,6 +171,7 @@ export default function Tasks() {
             projectById={projectById}
             onOpenTask={setDrawerTaskId}
             onChanged={reload}
+            onPatch={patchTask}
           />
         )}
       </div>

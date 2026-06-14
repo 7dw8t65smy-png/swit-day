@@ -10,6 +10,7 @@ import { localDateKey } from '../lib/date';
 import ProjectBadge from '../components/ProjectBadge';
 import PriorityBadge from '../components/PriorityBadge';
 import DifficultyBadge from '../components/DifficultyBadge';
+import { useRealtimeRefetch } from '../hooks/useRealtimeRefetch';
 import TaskDrawer from '../components/TaskDrawer';
 import DailyIntention from '../components/DailyIntention';
 import TodayEvents from '../components/TodayEvents';
@@ -44,8 +45,16 @@ export default function Today() {
   useEffect(() => {
     void load();
     setScratch(localStorage.getItem(scratchKey) ?? '');
+    // Подчищаем блокноты прошлых дней, чтобы они не копились в localStorage.
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('swit:scratch:') && key !== scratchKey) {
+        localStorage.removeItem(key);
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useRealtimeRefetch(() => void load());
 
   async function load() {
     const [ts, ns, ps, settings] = await Promise.all([
@@ -79,7 +88,10 @@ export default function Today() {
         title,
         project_id: defaultProjectId,
         priority: defaultPriority,
-        difficulty: defaultDifficulty
+        difficulty: defaultDifficulty,
+        // Привязываем к сегодня, чтобы задача осталась в списке «на сегодня»,
+        // а не исчезала через минуту после добавления.
+        due_date: today
       });
       setTasks((cur) => [created, ...cur]);
       setNewTask('');
@@ -96,16 +108,12 @@ export default function Today() {
     setNewNote('');
   }
 
-  // "Today" tasks = pinned to today OR overdue OR just-created (top-level only)
+  // «Сегодня» = задачи на сегодня ИЛИ просроченные (только верхний уровень).
   const sortedTasks = useMemo(() => {
     const candidates = tasks.filter(
       (t) =>
         !t.parent_task_id &&
-        (t.due_date === today ||
-          (t.due_date && t.due_date < today && t.status !== 'done') ||
-          (!t.due_date &&
-            t.status !== 'done' &&
-            Date.now() - new Date(t.created_at).getTime() < 60_000))
+        (t.due_date === today || (t.due_date && t.due_date < today && t.status !== 'done'))
     );
     return sortByPriority(candidates);
   }, [tasks, today]);

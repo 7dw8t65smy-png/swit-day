@@ -2,8 +2,10 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import { useEffect, useRef, lazy, Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useSettings } from './lib/settings';
+import { useAuth } from './lib/auth';
 import Sidebar from './components/Sidebar';
 import RightPanel from './components/RightPanel';
+import LoginScreen from './components/LoginScreen';
 // Страницы грузим лениво (route-level code-splitting): рендерный бандл был ~1.77MB
 // одним куском, теперь каждый маршрут — отдельный чанк, подгружаемый по входу.
 const Today = lazy(() => import('./pages/Today'));
@@ -49,6 +51,16 @@ export default function App() {
   // Right panel only on /today — на /tasks она съедала ширину доски и 4-я
   // колонка уезжала под календарь. /projects = алиас на /tasks, тоже скрываем.
   const showRight = loc.pathname.startsWith('/today');
+
+  // Сессия многопользовательского режима: пробуем сервер и восстанавливаем вход.
+  // В одиночном режиме (legacy) статус сразу станет 'legacy' — приложение
+  // работает как раньше, без экрана входа.
+  const authStatus = useAuth((s) => s.status);
+  const activeWorkspaceId = useAuth((s) => s.activeWorkspaceId);
+  const bootstrapAuth = useAuth((s) => s.bootstrap);
+  useEffect(() => {
+    void bootstrapAuth();
+  }, [bootstrapAuth]);
 
   // Load settings once on app start. Side-effects (accent color, density,
   // theme) apply inside the store. In packaged builds the renderer can become
@@ -133,6 +145,18 @@ export default function App() {
     return () => window.removeEventListener('unhandledrejection', onRejection);
   }, []);
 
+  // Гейт многопользовательского режима. 'legacy' и 'authed' → показываем приложение.
+  if (authStatus === 'loading') {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-bg">
+        <Loader2 className="animate-spin text-muted" size={28} />
+      </div>
+    );
+  }
+  if (authStatus === 'anon') {
+    return <LoginScreen />;
+  }
+
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       <Sidebar />
@@ -140,7 +164,10 @@ export default function App() {
         {/* Граница ошибок ключуется по pathname: краш одной страницы не «кирпичит»
             приложение — переход на другой маршрут пересоздаёт границу и сбрасывает
             упавшее состояние. Sidebar/RightPanel снаружи, чтобы навигация жила. */}
-        <ErrorBoundary key={loc.pathname} onReset={() => nav('/today')}>
+        <ErrorBoundary
+          key={`${activeWorkspaceId ?? 'solo'}:${loc.pathname}`}
+          onReset={() => nav('/today')}
+        >
           {/* Ключ по pathname пересоздаёт контейнер при смене маршрута,
               запуская CSS-анимацию входа (fade + подъём, только transform/opacity). */}
           <div className="animate-page min-h-full">

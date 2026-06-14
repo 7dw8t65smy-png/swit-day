@@ -480,3 +480,55 @@ export interface Canvas {
   created_at: string;
   updated_at: string;
 }
+
+// ===== Многопользовательский слой =====
+
+export type WorkspaceType = 'personal' | 'team';
+export type WorkspaceRole = 'owner' | 'member';
+
+export interface User {
+  id: string;
+  handle: string;
+  display_name: string;
+  created_at: string;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  type: WorkspaceType;
+  owner_id: string;
+  created_at: string;
+}
+
+/** Пространство + роль текущего пользователя в нём (для списка «мои пространства»). */
+export interface WorkspaceWithRole extends Workspace {
+  role: WorkspaceRole;
+  member_count: number;
+}
+
+export interface WorkspaceMember {
+  workspace_id: string;
+  user_id: string;
+  role: WorkspaceRole;
+  joined_at: string;
+  handle: string;
+  display_name: string;
+}
+
+export interface WorkspaceInvite {
+  code: string;
+  workspace_id: string;
+  created_by: string;
+  expires_at: string | null;
+  max_uses: number | null;
+  uses: number;
+  created_at: string;
+}
+
+/** Ответ на успешный вход/регистрацию: токен сессии + пользователь + его пространства. */
+export interface AuthResult {
+  token: string;
+  user: User;
+  workspaces: WorkspaceWithRole[];
+}

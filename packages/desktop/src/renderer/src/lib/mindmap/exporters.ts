@@ -18,6 +18,16 @@ function oneLine(s: string): string {
   return s.replace(/\s+/g, ' ').trim();
 }
 
+// Пропускаем только безопасные CSS-цвета в SVG-атрибуты, чтобы пользовательская
+// строка цвета (узла/элемента) не могла «выйти» из атрибута и внедрить разметку
+// в экспортируемый SVG. Невалидное значение → null (берётся цвет ветки/темы).
+const SAFE_COLOR = /^(#[0-9a-fA-F]{3,8}|rgba?\([0-9.,%\s]+\)|hsla?\([0-9.,%\s]+\)|[a-zA-Z]{1,20})$/;
+export function safeColor(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const v = value.trim();
+  return v.length <= 32 && SAFE_COLOR.test(v) ? v : null;
+}
+
 // --- Markdown ---
 
 export function toMarkdown(doc: MindMapDoc, title: string): string {
@@ -76,11 +86,12 @@ function resolveColors(doc: MindMapDoc, theme: MindMapThemeDef): Map<string, str
   const colors = new Map<string, string>();
   colors.set(doc.rootId, theme.rootColor);
   const walk = (node: MindMapNode, color: string): void => {
-    colors.set(node.id, node.color ?? color);
-    for (const child of getChildren(doc, node.id)) walk(child, child.color ?? colors.get(node.id)!);
+    colors.set(node.id, safeColor(node.color) ?? color);
+    for (const child of getChildren(doc, node.id))
+      walk(child, safeColor(child.color) ?? colors.get(node.id)!);
   };
   getChildren(doc, doc.rootId).forEach((c, i) => {
-    walk(c, c.color ?? theme.branchColors[i % theme.branchColors.length]);
+    walk(c, safeColor(c.color) ?? theme.branchColors[i % theme.branchColors.length]);
   });
   return colors;
 }

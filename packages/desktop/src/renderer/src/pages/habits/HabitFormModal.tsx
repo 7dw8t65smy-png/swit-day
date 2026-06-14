@@ -78,9 +78,8 @@ export function HabitFormModal({
       remind_time: remindEnabled ? remindTime : null,
       confirm_window_h: Math.max(1, Math.min(48, Math.round(confirmWindowH)))
     };
-    const saved = habit
-      ? await api.updateHabit(habit.id, payload)
-      : await api.createHabit(payload);
+    if (habit) await api.updateHabit(habit.id, payload);
+    else await api.createHabit(payload);
     await onSaved();
   }
 

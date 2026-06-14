@@ -5,6 +5,7 @@ import { api } from '../api';
 import type { Habit, HabitLog, HabitStats } from '@swit/shared';
 import { minutesUntilWindowEnd, habitStartDate } from '@swit/shared';
 import { buildLogMap, isHabitDueOn } from '../lib/habits';
+import { useRealtimeRefetch } from '../hooks/useRealtimeRefetch';
 import { EmptyHabits } from './habits/EmptyHabits';
 import { Group } from './habits/Group';
 import { RoutineRow } from './habits/RoutineRow';
@@ -33,6 +34,7 @@ export default function Habits(): JSX.Element {
   useEffect(() => {
     void reload();
   }, []);
+  useRealtimeRefetch(() => void reload());
 
   async function reload(): Promise<void> {
     // Тянем 90 дней — для мини-heatmap и расчёта старых пропусков.

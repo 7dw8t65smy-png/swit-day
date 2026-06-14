@@ -10,14 +10,16 @@ interface BoardInput {
 
 export function registerBoards(app: FastifyInstance): void {
   // Список досок целиком (их немного; content нужен для мини-превью в галерее).
-  app.get('/boards', () => {
-    return db.prepare('SELECT * FROM boards ORDER BY updated_at DESC').all() as Board[];
+  app.get('/boards', (req) => {
+    return db
+      .prepare('SELECT * FROM boards WHERE workspace_id IS ? ORDER BY updated_at DESC')
+      .all(req.workspaceId ?? null) as Board[];
   });
 
   app.get<{ Params: { id: string } }>('/boards/:id', (req) => {
-    const row = db.prepare('SELECT * FROM boards WHERE id = ?').get(req.params.id) as
-      | Board
-      | undefined;
+    const row = db
+      .prepare('SELECT * FROM boards WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as Board | undefined;
     if (!row) throw new Error('not found');
     return row;
   });
@@ -27,16 +29,16 @@ export function registerBoards(app: FastifyInstance): void {
     const t = nowIso();
     const b = req.body;
     db.prepare(
-      `INSERT INTO boards (id, title, content, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(id, b.title, b.content, t, t);
+      `INSERT INTO boards (id, title, content, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(id, b.title, b.content, t, t, req.workspaceId ?? null);
     return db.prepare('SELECT * FROM boards WHERE id = ?').get(id) as Board;
   });
 
   app.put<{ Params: { id: string }; Body: Partial<BoardInput> }>('/boards/:id', (req) => {
-    const cur = db.prepare('SELECT * FROM boards WHERE id = ?').get(req.params.id) as
-      | Board
-      | undefined;
+    const cur = db
+      .prepare('SELECT * FROM boards WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as Board | undefined;
     if (!cur) throw new Error('not found');
     const next = { ...cur, ...req.body, updated_at: nowIso() };
     db.prepare(`UPDATE boards SET title=?, content=?, updated_at=? WHERE id=?`).run(
@@ -49,21 +51,24 @@ export function registerBoards(app: FastifyInstance): void {
   });
 
   app.delete<{ Params: { id: string } }>('/boards/:id', (req) => {
-    db.prepare('DELETE FROM boards WHERE id = ?').run(req.params.id);
+    const r = db
+      .prepare('DELETE FROM boards WHERE id = ? AND workspace_id IS ?')
+      .run(req.params.id, req.workspaceId ?? null);
+    if (r.changes === 0) throw new Error('not found');
     return { ok: true };
   });
 
   app.post<{ Params: { id: string } }>('/boards/:id/duplicate', (req) => {
-    const cur = db.prepare('SELECT * FROM boards WHERE id = ?').get(req.params.id) as
-      | Board
-      | undefined;
+    const cur = db
+      .prepare('SELECT * FROM boards WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as Board | undefined;
     if (!cur) throw new Error('not found');
     const id = nanoid();
     const t = nowIso();
     db.prepare(
-      `INSERT INTO boards (id, title, content, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(id, `${cur.title} (копия)`, cur.content, t, t);
+      `INSERT INTO boards (id, title, content, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(id, `${cur.title} (копия)`, cur.content, t, t, req.workspaceId ?? null);
     return db.prepare('SELECT * FROM boards WHERE id = ?').get(id) as Board;
   });
 }

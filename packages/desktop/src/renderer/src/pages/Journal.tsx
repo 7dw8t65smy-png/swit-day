@@ -4,6 +4,7 @@ import { api } from '../api';
 import type { DayTotals, JournalEntry } from '@swit/shared';
 import { fmtHM, fmtClock } from '../lib/format';
 import { localDateKey } from '../lib/date';
+import { useRealtimeRefetch } from '../hooks/useRealtimeRefetch';
 
 const MOOD_EMOJI = ['', '😞', '😕', '😐', '🙂', '😄'];
 const MOODS = [1, 2, 3, 4, 5] as const;
@@ -26,6 +27,7 @@ export default function Journal() {
   useEffect(() => {
     void reload();
   }, []);
+  useRealtimeRefetch(() => void reload());
 
   async function reload(): Promise<void> {
     const es = await api.listJournal();

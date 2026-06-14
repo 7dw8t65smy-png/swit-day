@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { Wallet } from 'lucide-react';
 import { api } from '../api';
 import type { ExpenseCategory, RecurringTransaction, Transaction } from '@swit/shared';
+import { useRealtimeRefetch } from '../hooks/useRealtimeRefetch';
 import { useFmtMoney } from '../lib/money';
 import { DEFAULT_CATEGORIES, presetRange, ymd, type PeriodPreset } from '../lib/finance';
 import { TABS, type Tab } from './finance/helpers';
@@ -39,6 +40,7 @@ export default function Finance(): JSX.Element {
   useEffect(() => {
     void reload();
   }, []);
+  useRealtimeRefetch(() => void reload());
 
   async function reload(): Promise<void> {
     const [tx, cats, rec] = await Promise.all([
@@ -211,9 +213,7 @@ export default function Finance(): JSX.Element {
           {tab === 'transactions' && (
             <TransactionsPane
               transactions={inRange}
-              allTransactions={transactions}
               categories={categories}
-              range={range}
               onChanged={reload}
               fmt={fmtm}
             />

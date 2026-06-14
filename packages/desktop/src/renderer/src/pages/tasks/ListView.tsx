@@ -12,12 +12,14 @@ export function ListView({
   tasks,
   projectById,
   onOpenTask,
-  onChanged
+  onChanged,
+  onPatch
 }: {
   tasks: Task[];
   projectById: Map<string, Project>;
   onOpenTask: (id: string) => void;
   onChanged: () => Promise<void>;
+  onPatch: (task: Task) => void;
 }) {
   const sorted = sortByPriority(tasks);
   return (
@@ -37,7 +39,7 @@ export function ListView({
               const upd = await api.updateTask(t.id, {
                 status: t.status === 'done' ? 'pending' : 'done'
               });
-              await onChanged();
+              onPatch(upd);
             }}
           />
           <span

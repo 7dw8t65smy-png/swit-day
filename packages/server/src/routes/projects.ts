@@ -11,10 +11,12 @@ interface ProjectInput {
 }
 
 export function registerProjects(app: FastifyInstance): void {
-  app.get('/projects', () => {
+  app.get('/projects', (req) => {
     return db
-      .prepare('SELECT * FROM projects ORDER BY archived, sort_order, created_at')
-      .all() as Project[];
+      .prepare(
+        'SELECT * FROM projects WHERE workspace_id IS ? ORDER BY archived, sort_order, created_at'
+      )
+      .all(req.workspaceId ?? null) as Project[];
   });
 
   app.post<{ Body: ProjectInput }>('/projects', (req) => {
@@ -22,18 +24,18 @@ export function registerProjects(app: FastifyInstance): void {
     const t = nowIso();
     const { name, color = '#2563EB', icon = null, description = null } = req.body;
     db.prepare(
-      `INSERT INTO projects (id, name, color, icon, description, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, name, color, icon, description, t, t);
+      `INSERT INTO projects (id, name, color, icon, description, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, name, color, icon, description, t, t, req.workspaceId ?? null);
     return db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as Project;
   });
 
   app.patch<{ Params: { id: string }; Body: Partial<ProjectInput> & { archived?: number } }>(
     '/projects/:id',
     (req) => {
-      const cur = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id) as
-        | Project
-        | undefined;
+      const cur = db
+        .prepare('SELECT * FROM projects WHERE id = ? AND workspace_id IS ?')
+        .get(req.params.id, req.workspaceId ?? null) as Project | undefined;
       if (!cur) throw new Error('not found');
       const next = { ...cur, ...req.body, updated_at: nowIso() };
       db.prepare(
@@ -53,6 +55,10 @@ export function registerProjects(app: FastifyInstance): void {
   );
 
   app.delete<{ Params: { id: string } }>('/projects/:id', (req) => {
+    const owned = db
+      .prepare('SELECT id FROM projects WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null);
+    if (!owned) throw new Error('not found');
     const tx = db.transaction((id: string) => {
       db.prepare('UPDATE tasks SET project_id = NULL WHERE project_id = ?').run(id);
       db.prepare('UPDATE notes SET project_id = NULL WHERE project_id = ?').run(id);

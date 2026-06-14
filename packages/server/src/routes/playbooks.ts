@@ -27,17 +27,19 @@ interface StepInput {
 
 export function registerPlaybooks(app: FastifyInstance): void {
   // List
-  app.get('/playbooks', () => {
+  app.get('/playbooks', (req) => {
     return db
-      .prepare('SELECT * FROM playbooks ORDER BY archived, sort_order, created_at DESC')
-      .all() as Playbook[];
+      .prepare(
+        'SELECT * FROM playbooks WHERE workspace_id IS ? ORDER BY archived, sort_order, created_at DESC'
+      )
+      .all(req.workspaceId ?? null) as Playbook[];
   });
 
   // Get one with steps
   app.get<{ Params: { id: string } }>('/playbooks/:id', (req) => {
-    const pb = db.prepare('SELECT * FROM playbooks WHERE id = ?').get(req.params.id) as
-      | Playbook
-      | undefined;
+    const pb = db
+      .prepare('SELECT * FROM playbooks WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as Playbook | undefined;
     if (!pb) throw new Error('not found');
     const steps = db
       .prepare(
@@ -52,9 +54,10 @@ export function registerPlaybooks(app: FastifyInstance): void {
     const id = nanoid();
     const t = nowIso();
     const b = req.body;
+    const ws = req.workspaceId ?? null;
     db.prepare(
-      `INSERT INTO playbooks (id, title, description, content, project_id, icon, color, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO playbooks (id, title, description, content, project_id, icon, color, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       b.title,
@@ -64,16 +67,17 @@ export function registerPlaybooks(app: FastifyInstance): void {
       b.icon ?? null,
       b.color ?? null,
       t,
-      t
+      t,
+      ws
     );
     if (b.steps && b.steps.length > 0) {
       const stmt = db.prepare(
-        `INSERT INTO playbook_steps (id, playbook_id, title, description, sort_order, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO playbook_steps (id, playbook_id, title, description, sort_order, created_at, workspace_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       );
       const tx = db.transaction((items: StepInput[]) => {
         items.forEach((s, i) => {
-          stmt.run(nanoid(), id, s.title, s.description ?? null, s.sort_order ?? i, t);
+          stmt.run(nanoid(), id, s.title, s.description ?? null, s.sort_order ?? i, t, ws);
         });
       });
       tx(b.steps);
@@ -85,9 +89,9 @@ export function registerPlaybooks(app: FastifyInstance): void {
   app.patch<{ Params: { id: string }; Body: Partial<PlaybookInput> & { archived?: number } }>(
     '/playbooks/:id',
     (req) => {
-      const cur = db.prepare('SELECT * FROM playbooks WHERE id = ?').get(req.params.id) as
-        | Playbook
-        | undefined;
+      const cur = db
+        .prepare('SELECT * FROM playbooks WHERE id = ? AND workspace_id IS ?')
+        .get(req.params.id, req.workspaceId ?? null) as Playbook | undefined;
       if (!cur) throw new Error('not found');
       const n = { ...cur, ...req.body, updated_at: nowIso() };
       db.prepare(
@@ -110,6 +114,10 @@ export function registerPlaybooks(app: FastifyInstance): void {
 
   // Delete
   app.delete<{ Params: { id: string } }>('/playbooks/:id', (req) => {
+    const owned = db
+      .prepare('SELECT id FROM playbooks WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null);
+    if (!owned) throw new Error('not found');
     const tx = db.transaction((id: string) => {
       const runs = db
         .prepare('SELECT id FROM playbook_runs WHERE playbook_id = ?')
@@ -131,14 +139,19 @@ export function registerPlaybooks(app: FastifyInstance): void {
     (req) => {
       const id = nanoid();
       const b = req.body;
+      const ws = req.workspaceId ?? null;
+      const pb = db
+        .prepare('SELECT id FROM playbooks WHERE id = ? AND workspace_id IS ?')
+        .get(req.params.id, ws);
+      if (!pb) throw new Error('not found');
       const max = db
         .prepare('SELECT MAX(sort_order) AS m FROM playbook_steps WHERE playbook_id = ?')
         .get(req.params.id) as { m: number | null };
       const sortOrder = b.sort_order ?? (max.m ?? -1) + 1;
       db.prepare(
-        `INSERT INTO playbook_steps (id, playbook_id, title, description, sort_order, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      ).run(id, req.params.id, b.title, b.description ?? null, sortOrder, nowIso());
+        `INSERT INTO playbook_steps (id, playbook_id, title, description, sort_order, created_at, workspace_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).run(id, req.params.id, b.title, b.description ?? null, sortOrder, nowIso(), ws);
       // bump playbook updated_at
       db.prepare('UPDATE playbooks SET updated_at = ? WHERE id = ?').run(nowIso(), req.params.id);
       return db.prepare('SELECT * FROM playbook_steps WHERE id = ?').get(id) as PlaybookStep;
@@ -149,9 +162,9 @@ export function registerPlaybooks(app: FastifyInstance): void {
   app.patch<{ Params: { id: string }; Body: Partial<StepInput> }>(
     '/playbook-steps/:id',
     (req) => {
-      const cur = db.prepare('SELECT * FROM playbook_steps WHERE id = ?').get(req.params.id) as
-        | PlaybookStep
-        | undefined;
+      const cur = db
+        .prepare('SELECT * FROM playbook_steps WHERE id = ? AND workspace_id IS ?')
+        .get(req.params.id, req.workspaceId ?? null) as PlaybookStep | undefined;
       if (!cur) throw new Error('not found');
       const n = { ...cur, ...req.body };
       db.prepare(
@@ -167,9 +180,10 @@ export function registerPlaybooks(app: FastifyInstance): void {
 
   // Delete step
   app.delete<{ Params: { id: string } }>('/playbook-steps/:id', (req) => {
-    const cur = db.prepare('SELECT * FROM playbook_steps WHERE id = ?').get(req.params.id) as
-      | PlaybookStep
-      | undefined;
+    const cur = db
+      .prepare('SELECT * FROM playbook_steps WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as PlaybookStep | undefined;
+    if (!cur) throw new Error('not found');
     db.prepare('DELETE FROM playbook_steps WHERE id = ?').run(req.params.id);
     if (cur) {
       db.prepare('UPDATE playbooks SET updated_at = ? WHERE id = ?').run(
@@ -184,8 +198,8 @@ export function registerPlaybooks(app: FastifyInstance): void {
   app.get<{ Querystring: { playbook_id?: string; active?: string } }>(
     '/playbook-runs',
     (req) => {
-      const where: string[] = [];
-      const params: unknown[] = [];
+      const where: string[] = ['workspace_id IS ?'];
+      const params: unknown[] = [req.workspaceId ?? null];
       if (req.query.playbook_id) {
         where.push('playbook_id = ?');
         params.push(req.query.playbook_id);
@@ -202,9 +216,9 @@ export function registerPlaybooks(app: FastifyInstance): void {
 
   // Get run with steps
   app.get<{ Params: { id: string } }>('/playbook-runs/:id', (req) => {
-    const run = db.prepare('SELECT * FROM playbook_runs WHERE id = ?').get(req.params.id) as
-      | PlaybookRun
-      | undefined;
+    const run = db
+      .prepare('SELECT * FROM playbook_runs WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as PlaybookRun | undefined;
     if (!run) throw new Error('not found');
     const steps = db
       .prepare('SELECT * FROM playbook_run_steps WHERE run_id = ? ORDER BY sort_order')
@@ -214,9 +228,10 @@ export function registerPlaybooks(app: FastifyInstance): void {
 
   // Start a run (creates snapshot)
   app.post<{ Body: { playbook_id: string; title?: string } }>('/playbook-runs', (req) => {
+    const ws = req.workspaceId ?? null;
     const pb = db
-      .prepare('SELECT * FROM playbooks WHERE id = ?')
-      .get(req.body.playbook_id) as Playbook | undefined;
+      .prepare('SELECT * FROM playbooks WHERE id = ? AND workspace_id IS ?')
+      .get(req.body.playbook_id, ws) as Playbook | undefined;
     if (!pb) throw new Error('playbook not found');
     const steps = db
       .prepare(
@@ -227,16 +242,16 @@ export function registerPlaybooks(app: FastifyInstance): void {
     const t = nowIso();
     const runTitle = req.body.title?.trim() || pb.title;
     db.prepare(
-      `INSERT INTO playbook_runs (id, playbook_id, playbook_title, title, content, started_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, pb.id, pb.title, runTitle, pb.content, t, t, t);
+      `INSERT INTO playbook_runs (id, playbook_id, playbook_title, title, content, started_at, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, pb.id, pb.title, runTitle, pb.content, t, t, t, ws);
     const stmt = db.prepare(
-      `INSERT INTO playbook_run_steps (id, run_id, step_id, title, description, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO playbook_run_steps (id, run_id, step_id, title, description, sort_order, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     );
     const tx = db.transaction((items: PlaybookStep[]) => {
       items.forEach((s, i) => {
-        stmt.run(nanoid(), id, s.id, s.title, s.description, s.sort_order ?? i);
+        stmt.run(nanoid(), id, s.id, s.title, s.description, s.sort_order ?? i, ws);
       });
     });
     tx(steps);
@@ -248,9 +263,9 @@ export function registerPlaybooks(app: FastifyInstance): void {
     Params: { id: string };
     Body: { title?: string; notes?: string | null; completed_at?: string | null };
   }>('/playbook-runs/:id', (req) => {
-    const cur = db.prepare('SELECT * FROM playbook_runs WHERE id = ?').get(req.params.id) as
-      | PlaybookRun
-      | undefined;
+    const cur = db
+      .prepare('SELECT * FROM playbook_runs WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null) as PlaybookRun | undefined;
     if (!cur) throw new Error('not found');
     const n = { ...cur, ...req.body, updated_at: nowIso() };
     db.prepare(
@@ -261,6 +276,11 @@ export function registerPlaybooks(app: FastifyInstance): void {
 
   // Delete run
   app.delete<{ Params: { id: string } }>('/playbook-runs/:id', (req) => {
+    const owned = db
+      .prepare('SELECT id FROM playbook_runs WHERE id = ? AND workspace_id IS ?')
+      .get(req.params.id, req.workspaceId ?? null);
+    if (!owned) throw new Error('not found');
+    db.prepare('DELETE FROM playbook_run_steps WHERE run_id = ?').run(req.params.id);
     db.prepare('DELETE FROM playbook_runs WHERE id = ?').run(req.params.id);
     return { ok: true };
   });
@@ -270,8 +290,8 @@ export function registerPlaybooks(app: FastifyInstance): void {
     '/run-steps/:id',
     (req) => {
       const cur = db
-        .prepare('SELECT * FROM playbook_run_steps WHERE id = ?')
-        .get(req.params.id) as PlaybookRunStep | undefined;
+        .prepare('SELECT * FROM playbook_run_steps WHERE id = ? AND workspace_id IS ?')
+        .get(req.params.id, req.workspaceId ?? null) as PlaybookRunStep | undefined;
       if (!cur) throw new Error('not found');
       const completed_at =
         req.body.completed === true

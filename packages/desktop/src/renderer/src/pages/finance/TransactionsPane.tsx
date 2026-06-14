@@ -9,16 +9,12 @@ import TransactionFormModal from './TransactionFormModal';
 
 export default function TransactionsPane({
   transactions,
-  allTransactions,
   categories,
-  range,
   onChanged,
   fmt
 }: {
   transactions: Transaction[];
-  allTransactions: Transaction[];
   categories: ExpenseCategory[];
-  range: { from: string; to: string } | null;
   onChanged: () => Promise<void>;
   fmt: (v: number) => string;
 }): JSX.Element {

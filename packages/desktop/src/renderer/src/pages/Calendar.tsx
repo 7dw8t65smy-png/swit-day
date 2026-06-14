@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, GripVertical, X } from 'lucide-react';
+import { useRealtimeRefetch } from '../hooks/useRealtimeRefetch';
 import {
   addMonths,
   addWeeks,
@@ -52,6 +53,7 @@ export default function Calendar() {
   useEffect(() => {
     void reload();
   }, [anchor, view]);
+  useRealtimeRefetch(() => void reload());
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

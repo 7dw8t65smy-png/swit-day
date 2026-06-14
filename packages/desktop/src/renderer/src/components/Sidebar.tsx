@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 // FolderKanban kept available if a project section returns later
 import { useSettings } from '../lib/settings';
+import WorkspaceSwitcher from './WorkspaceSwitcher';
 
 const dragRegionStyle = { WebkitAppRegion: 'drag' } as CSSProperties;
 const noDragRegionStyle = { WebkitAppRegion: 'no-drag' } as CSSProperties;
@@ -60,6 +61,8 @@ export default function Sidebar() {
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         </button>
       </div>
+
+      <WorkspaceSwitcher />
 
       <nav className="flex-1 px-2 py-2 space-y-1">
         {items.map(({ to, label, icon: Icon }) => (
