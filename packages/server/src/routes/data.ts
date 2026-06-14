@@ -25,7 +25,8 @@ const TABLES = [
       'sort_order',
       'created_at',
       'updated_at',
-      'completed_at'
+      'completed_at',
+      'assignee_id'
     ]
   },
   {

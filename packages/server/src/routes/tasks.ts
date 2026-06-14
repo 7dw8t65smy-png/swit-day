@@ -15,6 +15,7 @@ interface TaskInput {
   due_time?: string | null;
   estimated_min?: number | null;
   tags?: string | null;
+  assignee_id?: string | null;
 }
 
 export function registerTasks(app: FastifyInstance): void {
@@ -58,8 +59,8 @@ export function registerTasks(app: FastifyInstance): void {
     const t = nowIso();
     const b = req.body;
     db.prepare(
-      `INSERT INTO tasks (id, title, description, project_id, parent_task_id, status, priority, difficulty, due_date, due_time, estimated_min, tags, created_at, updated_at, workspace_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO tasks (id, title, description, project_id, parent_task_id, status, priority, difficulty, due_date, due_time, estimated_min, tags, created_at, updated_at, workspace_id, assignee_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       b.title,
@@ -75,7 +76,8 @@ export function registerTasks(app: FastifyInstance): void {
       b.tags ?? null,
       t,
       t,
-      req.workspaceId ?? null
+      req.workspaceId ?? null,
+      b.assignee_id ?? null
     );
     return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Task;
   });
@@ -90,7 +92,7 @@ export function registerTasks(app: FastifyInstance): void {
       const next = { ...cur, ...req.body, updated_at: nowIso() };
       if (req.body.status === 'done' && !cur.completed_at) next.completed_at = nowIso();
       db.prepare(
-        `UPDATE tasks SET title=?, description=?, project_id=?, parent_task_id=?, status=?, priority=?, difficulty=?, due_date=?, due_time=?, estimated_min=?, tags=?, updated_at=?, completed_at=? WHERE id=?`
+        `UPDATE tasks SET title=?, description=?, project_id=?, parent_task_id=?, status=?, priority=?, difficulty=?, due_date=?, due_time=?, estimated_min=?, tags=?, updated_at=?, completed_at=?, assignee_id=? WHERE id=?`
       ).run(
         next.title,
         next.description,
@@ -105,6 +107,7 @@ export function registerTasks(app: FastifyInstance): void {
         next.tags,
         next.updated_at,
         next.completed_at,
+        next.assignee_id ?? null,
         cur.id
       );
       return db.prepare('SELECT * FROM tasks WHERE id = ?').get(cur.id) as Task;

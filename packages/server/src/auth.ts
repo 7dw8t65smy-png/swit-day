@@ -36,9 +36,20 @@ export function getUserByHandle(handle: string): UserRow | undefined {
     | undefined;
 }
 
+// Палитра цветов участников — назначенные задачи подписываются этим цветом.
+const MEMBER_PALETTE = [
+  '#2563EB', '#7C3AED', '#DB2777', '#EA580C', '#16A34A',
+  '#0891B2', '#CA8A04', '#DC2626', '#0D9488', '#9333EA'
+];
+function pickColor(): string {
+  return MEMBER_PALETTE[Math.floor(Math.random() * MEMBER_PALETTE.length)];
+}
+
 export function getUserById(id: string): User | undefined {
   return db
-    .prepare('SELECT id, handle, display_name, created_at FROM users WHERE id = ?')
+    .prepare(
+      "SELECT id, handle, display_name, created_at, COALESCE(color, '#2563EB') AS color FROM users WHERE id = ?"
+    )
     .get(id) as User | undefined;
 }
 
@@ -48,13 +59,14 @@ export function createUser(handle: string, displayName: string, password: string
   const t = nowIso();
   const tx = db.transaction(() => {
     db.prepare(
-      'INSERT INTO users (id, handle, display_name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)'
+      'INSERT INTO users (id, handle, display_name, password_hash, created_at, color) VALUES (?, ?, ?, ?, ?, ?)'
     ).run(
       id,
       handle.trim().toLowerCase(),
       displayName.trim() || handle.trim(),
       hashPassword(password),
-      t
+      t,
+      pickColor()
     );
     createWorkspace('Личное', 'personal', id);
   });
@@ -75,7 +87,7 @@ export function resolveToken(token: string | undefined): User | null {
   if (!token) return null;
   const row = db
     .prepare(
-      `SELECT u.id, u.handle, u.display_name, u.created_at
+      `SELECT u.id, u.handle, u.display_name, u.created_at, COALESCE(u.color, '#2563EB') AS color
        FROM auth_sessions s JOIN users u ON u.id = s.user_id
        WHERE s.token_hash = ? AND (s.expires_at IS NULL OR s.expires_at > ?)`
     )

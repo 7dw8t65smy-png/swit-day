@@ -35,6 +35,8 @@ export interface Task {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  // Назначение задачи участнику пространства (multi-user). null = не назначена.
+  assignee_id: string | null;
 }
 
 export interface WorkSession {
@@ -491,6 +493,8 @@ export interface User {
   handle: string;
   display_name: string;
   created_at: string;
+  // Цвет участника (для подписи назначенных задач). Hex, напр. '#2563EB'.
+  color: string;
 }
 
 export interface Workspace {
@@ -514,6 +518,7 @@ export interface WorkspaceMember {
   joined_at: string;
   handle: string;
   display_name: string;
+  color: string;
 }
 
 export interface WorkspaceInvite {

@@ -57,7 +57,8 @@ export function registerAuth(app: FastifyInstance): void {
       id: row.id,
       handle: row.handle,
       display_name: row.display_name,
-      created_at: row.created_at
+      created_at: row.created_at,
+      color: row.color ?? '#2563EB'
     };
     const result: AuthResult = { token, user, workspaces: listWorkspacesForUser(row.id) };
     return result;

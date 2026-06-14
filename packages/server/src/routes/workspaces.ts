@@ -90,7 +90,8 @@ export function registerWorkspaces(app: FastifyInstance): void {
     if (!memberRole(req.params.id, req.userId)) return deny(reply, 403, 'Нет доступа.');
     return db
       .prepare(
-        `SELECT m.workspace_id, m.user_id, m.role, m.joined_at, u.handle, u.display_name
+        `SELECT m.workspace_id, m.user_id, m.role, m.joined_at, u.handle, u.display_name,
+                COALESCE(u.color, '#2563EB') AS color
          FROM workspace_members m JOIN users u ON u.id = m.user_id
          WHERE m.workspace_id = ?
          ORDER BY (m.role = 'owner') DESC, m.joined_at ASC`
