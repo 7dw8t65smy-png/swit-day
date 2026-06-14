@@ -4,6 +4,7 @@ import { SHIFT_LABELS, SHIFTS } from '@swit/shared';
 import type { AgencySale } from '@swit/shared';
 import { api } from '../../api';
 import { useAgencyStore } from '../../lib/agency';
+import { useAuth } from '../../lib/auth';
 import { useRealtimeRefetch } from '../../hooks/useRealtimeRefetch';
 import { pushToast } from '../../hooks/useToasts';
 import SalesImportModal from './SalesImportModal';
@@ -86,6 +87,7 @@ export default function SalesPanel() {
     try {
       const res = await api.recomputeAgencySales(agencyId);
       await load();
+      useAuth.getState().bumpData(); // обновить «Выплаты» в этом же окне
       pushToast({ kind: 'info', message: `Обновлено продаж: ${res.updated}` });
     } finally {
       setRecomputing(false);

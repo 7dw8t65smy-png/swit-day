@@ -3,6 +3,8 @@ import { X, Trash2, Plus, Save } from 'lucide-react';
 import type { Agency, AgencyPayoutKinds, AgencySaleKind } from '@swit/shared';
 import { api } from '../../api';
 import { useAgencyStore } from '../../lib/agency';
+import { useAuth } from '../../lib/auth';
+import { pushToast } from '../../hooks/useToasts';
 
 const DEFAULT_KINDS: AgencyPayoutKinds = {
   message: true,
@@ -65,6 +67,9 @@ export default function AgencySettings({ agency, onClose }: { agency: Agency; on
       // Сразу применяем новые правила/типы ко всем уже импортированным продажам.
       await api.recomputeAgencySales(agency.id);
       await reloadAll();
+      // Обновляем уже открытые таблицы продаж/выплат в этом же окне
+      // (свой realtime-сигнал клиент не получает — двигаем версию данных вручную).
+      useAuth.getState().bumpData();
       onClose();
     } finally {
       setSaving(false);
@@ -77,12 +82,18 @@ export default function AgencySettings({ agency, onClose }: { agency: Agency; on
     await api.createAgencyRule({ agency_id: agency.id, amount: amt, label: ruleLabel.trim() || null });
     setRuleAmount('');
     setRuleLabel('');
+    // Применяем правило к уже импортированным продажам сразу.
+    const res = await api.recomputeAgencySales(agency.id);
     await reloadEntities();
+    useAuth.getState().bumpData();
+    pushToast({ kind: 'info', message: `Правило добавлено. Продажи пересчитаны (${res.updated}).` });
   }
 
   async function removeRule(id: string): Promise<void> {
     await api.deleteAgencyRule(id);
+    await api.recomputeAgencySales(agency.id);
     await reloadEntities();
+    useAuth.getState().bumpData();
   }
 
   return (
@@ -160,28 +171,34 @@ export default function AgencySettings({ agency, onClose }: { agency: Agency; on
                 ))}
               </div>
             )}
-            <div className="flex gap-2">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void addRule();
+              }}
+              className="flex gap-2"
+            >
               <input
                 value={ruleAmount}
                 onChange={(e) => setRuleAmount(e.target.value)}
-                placeholder="Сумма, напр. 9.69"
+                placeholder="Сумма"
                 inputMode="decimal"
-                className={`${inputCls} w-32`}
+                className="h-9 px-2.5 rounded-md border border-border bg-surface text-sm w-24 shrink-0 focus:outline-none focus:border-accent transition-colors"
               />
               <input
                 value={ruleLabel}
                 onChange={(e) => setRuleLabel(e.target.value)}
                 placeholder="Ярлык (необязательно)"
-                className={`${inputCls} flex-1`}
+                className="h-9 px-2.5 rounded-md border border-border bg-surface text-sm flex-1 min-w-0 focus:outline-none focus:border-accent transition-colors"
               />
               <button
-                onClick={() => void addRule()}
+                type="submit"
                 disabled={!ruleAmount.trim()}
-                className="bg-surface2 border border-border px-3 rounded-md text-sm flex items-center gap-1 disabled:opacity-40"
+                className="bg-accent text-white px-3 rounded-md text-sm flex items-center gap-1 shrink-0 disabled:opacity-40 hover:brightness-110 transition active:scale-[0.98]"
               >
-                <Plus size={14} />
+                <Plus size={15} /> Добавить
               </button>
-            </div>
+            </form>
           </div>
         </div>
 
