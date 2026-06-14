@@ -274,15 +274,25 @@
 }
 
 /* Невидимые хэндлы для коннекторов (линия идёт центр-в-центр). */
+/* Точки соединения: скрыты, появляются при наведении на элемент. Тянешь от
+   точки к другому элементу — связь создаётся сразу (onConnect). */
 .board-handle {
   opacity: 0;
-  width: 1px;
-  height: 1px;
-  min-width: 0;
-  border: none;
-  pointer-events: none;
-  left: 50%;
-  top: 50%;
+  width: 11px;
+  height: 11px;
+  border-radius: 9999px;
+  background: var(--color-accent, #2563eb);
+  border: 2px solid var(--color-surface, #fff);
+  pointer-events: auto;
+  transition: opacity 120ms ease;
+}
+.react-flow__node:hover .board-handle,
+.board-handle.connectionindicator,
+.board-handle:hover {
+  opacity: 1;
+}
+.board-handle:hover {
+  transform: scale(1.25);
 }
 
 .board-tool--on {

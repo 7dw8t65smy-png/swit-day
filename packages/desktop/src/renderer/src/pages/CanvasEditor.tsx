@@ -13,6 +13,7 @@ import {
   SelectionMode,
   type Node,
   type Edge,
+  type Connection,
   type NodeMouseHandler,
   type OnNodeDrag,
   type OnSelectionChangeParams,
@@ -368,9 +369,18 @@ export default function CanvasEditor(): JSX.Element {
       setPendingFrom(node.id);
     } else if (pendingFrom !== node.id && !mindIds.has(pendingFrom)) {
       useBoard.getState().addConnector(pendingFrom, node.id);
-      setPendingFrom(null);
-      setMode('select');
+      // Остаёмся в режиме «Связь» и продолжаем от только что соединённого узла —
+      // можно строить цепочку связей подряд. Выход — Esc.
+      setPendingFrom(node.id);
     }
+  };
+
+  // Быстрое соединение перетаскиванием: тянешь от точки одного элемента доски
+  // к другому — связь создаётся сразу, без включения инструмента «Связь».
+  const onConnect = (c: Connection): void => {
+    if (!c.source || !c.target || c.source === c.target) return;
+    if (mindIds.has(c.source) || mindIds.has(c.target)) return; // только элементы доски
+    useBoard.getState().addConnector(c.source, c.target);
   };
 
   // Двойной клик по узлу — переименование (как в отдельном редакторе карт).
@@ -808,6 +818,7 @@ export default function CanvasEditor(): JSX.Element {
               onNodeDragStop={onNodeDragStop}
               onNodeClick={onNodeClick}
               onNodeDoubleClick={onNodeDoubleClick}
+              onConnect={onConnect}
               onInit={(inst) => (rfRef.current = inst)}
               onPaneClick={() => {
                 useMindMap.getState().select(null);
