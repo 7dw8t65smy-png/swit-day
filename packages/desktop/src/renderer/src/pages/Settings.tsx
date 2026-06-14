@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Save, Check } from 'lucide-react';
-import { api, resetApiUrl } from '../api';
+import { api } from '../api';
 import type { Project } from '@swit/shared';
 import { DEFAULT_SETTINGS, useSettings } from '../lib/settings';
 import { CATEGORIES } from './settings/constants';
@@ -9,7 +9,6 @@ import { GeneralPane } from './settings/GeneralPane';
 import { AppearancePane } from './settings/AppearancePane';
 import { WorkdayPane } from './settings/WorkdayPane';
 import { NotificationsPane } from './settings/NotificationsPane';
-import { IntegrationsPane } from './settings/IntegrationsPane';
 import { DataPane } from './settings/DataPane';
 import { AboutPane } from './settings/AboutPane';
 
@@ -44,19 +43,6 @@ export default function Settings(): JSX.Element {
 
   async function onSave(): Promise<void> {
     await save();
-    // Apply backend override locally — next requests will use new URL.
-    if (s.backend_url.trim()) {
-      localStorage.setItem('swit:backend_url', s.backend_url.trim());
-      if (s.backend_token.trim()) {
-        localStorage.setItem('swit:backend_token', s.backend_token.trim());
-      } else {
-        localStorage.removeItem('swit:backend_token');
-      }
-    } else {
-      localStorage.removeItem('swit:backend_url');
-      localStorage.removeItem('swit:backend_token');
-    }
-    resetApiUrl();
     setSaved(true);
     setDirty(false);
     setTimeout(() => setSaved(false), 1500);
@@ -135,7 +121,6 @@ export default function Settings(): JSX.Element {
             {cat === 'appearance' && <AppearancePane s={s} patch={patch} />}
             {cat === 'workday' && <WorkdayPane s={s} patch={patch} projects={projects} />}
             {cat === 'notifications' && <NotificationsPane s={s} patch={patch} />}
-            {cat === 'integrations' && <IntegrationsPane s={s} patch={patch} />}
             {cat === 'data' && <DataPane onResetDefaults={onResetDefaults} />}
             {cat === 'about' && <AboutPane />}
           </div>

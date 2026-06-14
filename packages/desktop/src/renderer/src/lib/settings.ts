@@ -58,10 +58,6 @@ export interface AppSettings {
   preset_task_high: string;
   preset_task_normal: string;
   preset_task_low: string;
-
-  // Integrations
-  backend_url: string;
-  backend_token: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -109,9 +105,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   preset_task_urgent: 'Критичный',
   preset_task_high: 'Важный',
   preset_task_normal: 'Обычный',
-  preset_task_low: 'Без напоминаний',
-  backend_url: '',
-  backend_token: ''
+  preset_task_low: 'Без напоминаний'
 };
 
 // --- Encoding ---
@@ -190,9 +184,7 @@ function decode(raw: Record<string, string>): AppSettings {
     preset_task_urgent: get('preset_task_urgent', DEFAULT_SETTINGS.preset_task_urgent),
     preset_task_high: get('preset_task_high', DEFAULT_SETTINGS.preset_task_high),
     preset_task_normal: get('preset_task_normal', DEFAULT_SETTINGS.preset_task_normal),
-    preset_task_low: get('preset_task_low', DEFAULT_SETTINGS.preset_task_low),
-    backend_url: get('backend_url', DEFAULT_SETTINGS.backend_url),
-    backend_token: get('backend_token', DEFAULT_SETTINGS.backend_token)
+    preset_task_low: get('preset_task_low', DEFAULT_SETTINGS.preset_task_low)
   };
 }
 

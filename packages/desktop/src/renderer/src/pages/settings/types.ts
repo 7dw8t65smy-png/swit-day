@@ -5,7 +5,6 @@ export type Category =
   | 'appearance'
   | 'workday'
   | 'notifications'
-  | 'integrations'
   | 'data'
   | 'about';
 

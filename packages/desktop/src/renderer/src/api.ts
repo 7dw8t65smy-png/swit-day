@@ -105,15 +105,6 @@ export interface HealthInfo {
   auth_required?: boolean;
 }
 
-/** Совместимость: ручной override адреса/токена из Настроек (localStorage). */
-export function resetApiUrl(): void {
-  if (typeof localStorage === 'undefined') return;
-  const overrideUrl = localStorage.getItem('swit:backend_url');
-  const overrideToken = localStorage.getItem('swit:backend_token');
-  if (overrideUrl) baseUrl = overrideUrl;
-  if (overrideToken) bearer = overrideToken;
-}
-
 // Короткое, человеческое сообщение об ошибке по HTTP-статусу.
 // Технические детали (метод/путь/код) уходят отдельной приглушённой строкой.
 function friendlyHttpMessage(status: number): string {
