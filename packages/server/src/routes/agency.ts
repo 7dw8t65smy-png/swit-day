@@ -555,6 +555,12 @@ export function registerAgency(app: FastifyInstance): void {
         createdModels++;
       }
 
+      // Порядковый номер среди одинаковых продаж (модель|время|сумма|тип|фанат)
+      // в этой вставке. OnlyMonster даёт точность до минуты, поэтому две реально
+      // разные одинаковые продажи в одну минуту не должны схлопываться в одну;
+      // при повторной вставке тех же строк номера те же → дубли по-прежнему
+      // игнорируются.
+      const seenDedup = new Map<string, number>();
       for (const s of sales) {
         const modelId = s.model_name ? modelByName.get(norm(s.model_name)) ?? defModel : defModel;
         if (!modelId) {
@@ -593,7 +599,10 @@ export function registerAgency(app: FastifyInstance): void {
           }
         }
 
-        const dedup = `${modelId}|${parts.occurredAtUtc}|${s.amount.toFixed(2)}|${s.kind}|${s.fan_name ?? ''}`;
+        const dedupBase = `${modelId}|${parts.occurredAtUtc}|${s.amount.toFixed(2)}|${s.kind}|${s.fan_name ?? ''}`;
+        const ord = seenDedup.get(dedupBase) ?? 0;
+        seenDedup.set(dedupBase, ord + 1);
+        const dedup = `${dedupBase}#${ord}`;
         const id = nanoid();
         const t = nowIso();
         const r = insertSale.run(
