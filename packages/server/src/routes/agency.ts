@@ -876,9 +876,10 @@ export function registerAgency(app: FastifyInstance): void {
         )
         .all(...params) as { local_date: string; chatter_id: string | null; net: number }[];
 
-      // Пул комиссии агентства = commission_percent% от NET, идущего в ЗП
-      // (с учётом типов/правил), независимо от того, назначен ли чаттер.
-      const commWhere = ['workspace_id IS ?', 'agency_id = ?', 'counts_for_payout = 1'];
+      // Пул комиссии агентства = commission_percent% от ВСЕГО NET агентства за
+      // период (все продажи, независимо от чаттера и исключений из ЗП чаттера).
+      // Исключения типов/правил/ручные влияют только на ЗП чаттеров, не на пул.
+      const commWhere = ['workspace_id IS ?', 'agency_id = ?'];
       const commParams: unknown[] = [ws, agency_id];
       if (from) { commWhere.push('local_date >= ?'); commParams.push(from); }
       if (to) { commWhere.push('local_date <= ?'); commParams.push(to); }
