@@ -80,6 +80,11 @@ function parseMoney(token: string): number {
   return parseFloat(token.replace(/,/g, '')) || 0;
 }
 
+// Ячейка-сумма табличной вставки (содержит $ и цифру).
+function isMoneyCell(c: string): boolean {
+  return /\$/.test(c) && /\d/.test(c);
+}
+
 function classify(desc: string): { kind: AgencySaleKind; fan: string | null } {
   const d = desc.trim();
   let m: RegExpMatchArray | null;
@@ -151,9 +156,36 @@ export function parseOnlyMonsterSales(text: string): ParsedSale[] {
       fee = 0;
     }
 
-    // Описание — следующая непустая строка, если она не «денежная».
+    // Табличный формат (Google Sheets / TSV): модель — первый столбец, чаттер —
+    // последний; описание на той же строке после сумм. Иначе — простой формат
+    // OnlyMonster: описание на следующей строке.
+    let modelName: string | null = null;
+    let chatterName: string | null = null;
     let desc = '';
-    if (i + 1 < lines.length && !isMoneyLine(lines[i + 1])) {
+    const cells = line.split('\t').map((c) => c.trim());
+    if (cells.length > 1) {
+      const dtIdx = cells.findIndex((c) => DATETIME_RE.test(c));
+      const moneyIdxs = cells.map((c, idx) => (isMoneyCell(c) ? idx : -1)).filter((idx) => idx >= 0);
+      const lastMoney = moneyIdxs.length ? Math.max(...moneyIdxs) : dtIdx;
+      // Модель — первая непустая ячейка до даты, не сумма.
+      for (let k = 0; k < dtIdx; k++) {
+        if (cells[k] && !isMoneyCell(cells[k])) {
+          modelName = cells[k];
+          break;
+        }
+      }
+      // После сумм: [описание, чаттер?].
+      const after: string[] = [];
+      for (let k = lastMoney + 1; k < cells.length; k++) {
+        if (cells[k]) after.push(cells[k]);
+      }
+      if (after.length) {
+        desc = after[0];
+        if (after.length > 1) chatterName = after[after.length - 1];
+      }
+    }
+    // Простой формат: описание — следующая непустая «не денежная» строка.
+    if (!desc && i + 1 < lines.length && !isMoneyLine(lines[i + 1])) {
       desc = lines[i + 1];
       i++; // потребили строку описания
     }
@@ -172,7 +204,9 @@ export function parseOnlyMonsterSales(text: string): ParsedSale[] {
       net,
       kind: parsed.kind,
       fan_name: parsed.fan,
-      raw_line: desc ? `${line} | ${desc}` : line
+      raw_line: desc ? `${line} | ${desc}` : line,
+      model_name: modelName,
+      chatter_name: chatterName
     });
   }
   return out;

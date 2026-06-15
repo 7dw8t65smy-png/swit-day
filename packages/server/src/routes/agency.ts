@@ -467,103 +467,180 @@ export function registerAgency(app: FastifyInstance): void {
 
   // Импорт распарсенных на клиенте продаж: сервер считает смену/чаттера,
   // применяет правила исключения и дедуп. Возвращает вставленные + счётчики.
-  app.post<{ Body: { agency_id: string; model_id: string; sales: ParsedSale[] } }>(
-    '/agency/sales/import',
-    (req) => {
-      const ws = req.workspaceId ?? null;
-      const { agency_id, model_id, sales } = req.body;
-      const agency = requireAgency(ws, agency_id);
-      const model = db
+  app.post<{
+    Body: {
+      agency_id: string;
+      default_model_id?: string | null;
+      model_map?: Record<string, string>; // имя модели из вставки → id существующей
+      create_models?: string[]; // имена моделей из вставки, которые создать
+      create_chatters?: boolean; // автосоздавать неизвестных чаттеров
+      sales: ParsedSale[];
+    };
+  }>('/agency/sales/import', (req) => {
+    const ws = req.workspaceId ?? null;
+    const { agency_id, default_model_id, model_map, create_models, create_chatters, sales } = req.body;
+    const agency = requireAgency(ws, agency_id);
+    if (!Array.isArray(sales)) throw new Error('sales must be an array');
+
+    const kinds = parseKinds(agency.payout_kinds);
+    const rules = db
+      .prepare('SELECT * FROM agency_payout_rules WHERE agency_id = ? AND workspace_id IS ? AND active = 1')
+      .all(agency_id, ws) as AgencyPayoutRule[];
+
+    const norm = (s: string): string => s.trim().toLowerCase();
+    // Значения столбца «чаттер», которые означают «не определён».
+    const PLACEHOLDERS = new Set(['', 'хз', 'хуз', '?', '-', '—', 'none']);
+
+    // Существующие модели/чаттеры агентства: имя(норм) → id.
+    const modelByName = new Map<string, string>();
+    for (const m of db
+      .prepare('SELECT id, name FROM agency_models WHERE agency_id = ? AND workspace_id IS ?')
+      .all(agency_id, ws) as { id: string; name: string }[]) {
+      modelByName.set(norm(m.name), m.id);
+    }
+    const chatterByName = new Map<string, { id: string; shift: AgencySale['shift'] }>();
+    for (const c of db
+      .prepare('SELECT id, name, shift FROM agency_chatters WHERE agency_id = ? AND workspace_id IS ?')
+      .all(agency_id, ws) as { id: string; name: string; shift: AgencySale['shift'] }[]) {
+      chatterByName.set(norm(c.name), { id: c.id, shift: c.shift });
+    }
+
+    let defModel: string | null = null;
+    if (default_model_id) {
+      const dm = db
         .prepare('SELECT id FROM agency_models WHERE id = ? AND agency_id = ? AND workspace_id IS ?')
-        .get(model_id, agency_id, ws);
-      if (!model) throw new Error('not found');
-      if (!Array.isArray(sales)) throw new Error('sales must be an array');
+        .get(default_model_id, agency_id, ws);
+      if (dm) defModel = default_model_id;
+    }
 
-      const kinds = parseKinds(agency.payout_kinds);
-      const rules = db
-        .prepare('SELECT * FROM agency_payout_rules WHERE agency_id = ? AND workspace_id IS ? AND active = 1')
-        .all(agency_id, ws) as AgencyPayoutRule[];
+    const insertModel = db.prepare(
+      `INSERT INTO agency_models (id, agency_id, name, of_username, active, notes, sort_order, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, NULL, 1, NULL, 0, ?, ?, ?)`
+    );
+    const insertChatter = db.prepare(
+      `INSERT INTO agency_chatters (id, agency_id, name, telegram, experience, trc20, percent, shift, color, active, notes, sort_order, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, NULL, NULL, NULL, NULL, NULL, ?, 1, NULL, 0, ?, ?, ?)`
+    );
+    const insertSale = db.prepare(
+      `INSERT OR IGNORE INTO agency_sales
+       (id, agency_id, model_id, chatter_id, occurred_at, local_date, shift, amount, fee, net,
+        kind, fan_name, counts_for_payout, excluded_reason, dedup_key, raw_line, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
 
-      const insert = db.prepare(
-        `INSERT OR IGNORE INTO agency_sales
-         (id, agency_id, model_id, chatter_id, occurred_at, local_date, shift, amount, fee, net,
-          kind, fan_name, counts_for_payout, excluded_reason, dedup_key, raw_line, created_at, updated_at, workspace_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      );
+    let inserted = 0;
+    let skipped = 0;
+    let createdModels = 0;
+    let createdChatters = 0;
+    const insertedIds: string[] = [];
 
-      let inserted = 0;
-      let skipped = 0;
-      const insertedIds: string[] = [];
+    const tx = db.transaction(() => {
+      // Привязки к существующим моделям (проверяем принадлежность агентству).
+      if (model_map) {
+        for (const [nm, mid] of Object.entries(model_map)) {
+          const ok = db
+            .prepare('SELECT id FROM agency_models WHERE id = ? AND agency_id = ? AND workspace_id IS ?')
+            .get(mid, agency_id, ws);
+          if (ok) modelByName.set(norm(nm), mid);
+        }
+      }
+      // Создание новых моделей из вставки.
+      for (const nm of create_models ?? []) {
+        const key = norm(nm);
+        if (!nm.trim() || modelByName.has(key)) continue;
+        const id = nanoid();
+        const t = nowIso();
+        insertModel.run(id, agency_id, nm.trim(), t, t, ws);
+        modelByName.set(key, id);
+        createdModels++;
+      }
 
-      const tx = db.transaction(() => {
-        for (const s of sales) {
-          // Дату считаем в МСК; смену и чаттера НЕ определяем автоматически —
-          // пользователь сам выберет чаттера на продаже, смена возьмётся из него.
-          const parts = toMskParts(s, agency.source_tz_offset);
-          const chatterId: string | null = null;
+      for (const s of sales) {
+        const modelId = s.model_name ? modelByName.get(norm(s.model_name)) ?? defModel : defModel;
+        if (!modelId) {
+          skipped++;
+          continue;
+        }
 
-          // Считается ли в ЗП: сначала по типу, затем правила исключения по сумме.
-          let counts = kinds[s.kind] !== false;
-          let reason: string | null = null;
-          if (!counts) reason = 'Тип не учитывается в ЗП';
-          for (const rule of rules) {
-            if (rule.match_kind && rule.match_kind !== s.kind) continue;
-            if (cents(rule.amount) === cents(s.amount)) {
-              counts = false;
-              reason = rule.label || 'Исключено правилом';
-              break;
-            }
-          }
-
-          const dedup = `${model_id}|${parts.occurredAtUtc}|${s.amount.toFixed(2)}|${s.kind}|${s.fan_name ?? ''}`;
-          const id = nanoid();
-          const t = nowIso();
-          const r = insert.run(
-            id,
-            agency_id,
-            model_id,
-            chatterId,
-            parts.occurredAtUtc,
-            parts.mskDate,
-            null, // смена определится при назначении чаттера
-            s.amount,
-            s.fee,
-            s.net,
-            s.kind,
-            s.fan_name ?? null,
-            counts ? 1 : 0,
-            reason,
-            dedup,
-            s.raw_line ?? null,
-            t,
-            t,
-            ws
-          );
-          if (r.changes > 0) {
-            inserted++;
-            insertedIds.push(id);
-          } else {
-            skipped++;
+        // Чаттер из вставки: сопоставляем по имени, при необходимости создаём.
+        let chatterId: string | null = null;
+        let chShift: AgencySale['shift'] = null;
+        const cn = (s.chatter_name ?? '').trim();
+        if (cn && !PLACEHOLDERS.has(cn.toLowerCase())) {
+          const existing = chatterByName.get(norm(cn));
+          if (existing) {
+            chatterId = existing.id;
+            chShift = existing.shift;
+          } else if (create_chatters) {
+            const id = nanoid();
+            const t = nowIso();
+            insertChatter.run(id, agency_id, cn, pickColor(), t, t, ws);
+            chatterByName.set(norm(cn), { id, shift: null });
+            chatterId = id;
+            createdChatters++;
           }
         }
-      });
-      tx();
 
-      const rows =
-        insertedIds.length > 0
-          ? (db
-              .prepare(
-                `SELECT * FROM agency_sales WHERE workspace_id IS ? AND id IN (${insertedIds.map(() => '?').join(',')})`
-              )
-              .all(ws, ...insertedIds) as AgencySale[])
-          : [];
-      return { ok: true, inserted, skipped, sales: rows };
-    }
-  );
+        const parts = toMskParts(s, agency.source_tz_offset);
+        let counts = kinds[s.kind] !== false;
+        let reason: string | null = counts ? null : 'Тип не учитывается в ЗП';
+        for (const rule of rules) {
+          if (rule.match_kind && rule.match_kind !== s.kind) continue;
+          if (cents(rule.amount) === cents(s.amount)) {
+            counts = false;
+            reason = rule.label || 'Исключено правилом';
+            break;
+          }
+        }
+
+        const dedup = `${modelId}|${parts.occurredAtUtc}|${s.amount.toFixed(2)}|${s.kind}|${s.fan_name ?? ''}`;
+        const id = nanoid();
+        const t = nowIso();
+        const r = insertSale.run(
+          id,
+          agency_id,
+          modelId,
+          chatterId,
+          parts.occurredAtUtc,
+          parts.mskDate,
+          chatterId ? chShift : null,
+          s.amount,
+          s.fee,
+          s.net,
+          s.kind,
+          s.fan_name ?? null,
+          counts ? 1 : 0,
+          reason,
+          dedup,
+          s.raw_line ?? null,
+          t,
+          t,
+          ws
+        );
+        if (r.changes > 0) {
+          inserted++;
+          insertedIds.push(id);
+        } else {
+          skipped++;
+        }
+      }
+    });
+    tx();
+
+    const rows =
+      insertedIds.length > 0
+        ? (db
+            .prepare(
+              `SELECT * FROM agency_sales WHERE workspace_id IS ? AND id IN (${insertedIds.map(() => '?').join(',')})`
+            )
+            .all(ws, ...insertedIds) as AgencySale[])
+        : [];
+    return { ok: true, inserted, skipped, created_models: createdModels, created_chatters: createdChatters, sales: rows };
+  });
 
   app.patch<{
     Params: { id: string };
-    Body: Partial<Pick<AgencySale, 'chatter_id' | 'counts_for_payout' | 'excluded_reason' | 'kind'>>;
+    Body: Partial<Pick<AgencySale, 'chatter_id' | 'model_id' | 'counts_for_payout' | 'excluded_reason' | 'kind'>>;
   }>('/agency/sales/:id', (req) => {
     const ws = req.workspaceId ?? null;
     const cur = db
@@ -571,6 +648,16 @@ export function registerAgency(app: FastifyInstance): void {
       .get(req.params.id, ws) as AgencySale | undefined;
     if (!cur) throw new Error('not found');
     const n = { ...cur, ...req.body, updated_at: nowIso() };
+
+    // Смена модели: новая модель обязана быть в том же агентстве.
+    let modelId = cur.model_id;
+    if ('model_id' in req.body && n.model_id && n.model_id !== cur.model_id) {
+      const m = db
+        .prepare('SELECT id FROM agency_models WHERE id = ? AND agency_id = ? AND workspace_id IS ?')
+        .get(n.model_id, cur.agency_id, ws);
+      if (!m) throw new Error('not found');
+      modelId = n.model_id;
+    }
 
     // Смена продажи следует за назначенным чаттером (у каждого фиксированная смена).
     // Чаттер обязан принадлежать тому же агентству, что и продажа.
@@ -591,8 +678,9 @@ export function registerAgency(app: FastifyInstance): void {
     const manual = 'counts_for_payout' in req.body ? 1 : cur.manual_payout;
 
     db.prepare(
-      `UPDATE agency_sales SET chatter_id=?, shift=?, counts_for_payout=?, excluded_reason=?, manual_payout=?, kind=?, updated_at=? WHERE id=?`
+      `UPDATE agency_sales SET model_id=?, chatter_id=?, shift=?, counts_for_payout=?, excluded_reason=?, manual_payout=?, kind=?, updated_at=? WHERE id=?`
     ).run(
+      modelId,
       n.chatter_id ?? null,
       shift,
       n.counts_for_payout,

@@ -620,15 +620,25 @@ export const api = {
     ).toString();
     return req<AgencySale[]>('GET', `/agency/sales${qs ? `?${qs}` : ''}`);
   },
-  importAgencySales: (b: { agency_id: string; model_id: string; sales: ParsedSale[] }) =>
-    req<{ ok: true; inserted: number; skipped: number; sales: AgencySale[] }>(
-      'POST',
-      '/agency/sales/import',
-      b
-    ),
+  importAgencySales: (b: {
+    agency_id: string;
+    default_model_id?: string | null;
+    model_map?: Record<string, string>;
+    create_models?: string[];
+    create_chatters?: boolean;
+    sales: ParsedSale[];
+  }) =>
+    req<{
+      ok: true;
+      inserted: number;
+      skipped: number;
+      created_models: number;
+      created_chatters: number;
+      sales: AgencySale[];
+    }>('POST', '/agency/sales/import', b),
   updateAgencySale: (
     id: string,
-    b: Partial<Pick<AgencySale, 'chatter_id' | 'counts_for_payout' | 'excluded_reason' | 'kind'>>
+    b: Partial<Pick<AgencySale, 'chatter_id' | 'model_id' | 'counts_for_payout' | 'excluded_reason' | 'kind'>>
   ) => req<AgencySale>('PATCH', `/agency/sales/${id}`, b),
   deleteAgencySale: (id: string) => req<{ ok: true }>('DELETE', `/agency/sales/${id}`),
   recomputeAgencySales: (agencyId: string) =>

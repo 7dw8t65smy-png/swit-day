@@ -42,6 +42,33 @@ Tip from Whale`;
     expect(out[0].fee).toBe(240);
   });
 
+  it('parses the rich TSV format with model (first col) and chatter (last col)', () => {
+    const text = [
+      'Eva\t\tJun 8, 20268:08 pm\t$17.00\t$3.40\t$13.60\tPayment for message from mommys boy\tМаксим ',
+      'Stassy\t\tJun 9, 20261:54 am\t$10.92\t$2.18\t$8.74\tPayment for message from MisterK\tБогдан ',
+      'Stassy\t\tJun 7, 202611:52 pm\t$5.92\t$1.18\t$4.74\tPayment for message from Kev/Austria\tхз'
+    ].join('\n');
+    const out = parseOnlyMonsterSales(text);
+    expect(out).toHaveLength(3);
+    expect(out[0]).toMatchObject({
+      model_name: 'Eva',
+      chatter_name: 'Максим',
+      amount: 17,
+      fee: 3.4,
+      net: 13.6,
+      kind: 'message',
+      fan_name: 'mommys boy'
+    });
+    expect(out[1]).toMatchObject({ model_name: 'Stassy', chatter_name: 'Богдан', net: 8.74 });
+    expect(out[2]).toMatchObject({ model_name: 'Stassy', chatter_name: 'хз', net: 4.74 });
+  });
+
+  it('leaves model/chatter null for the simple OnlyMonster format', () => {
+    const out = parseOnlyMonsterSales('Jun 14, 2026 11:08 pm\t$5.69\t$1.14\t$4.55\nPayment for message from Lyrec');
+    expect(out[0].model_name ?? null).toBeNull();
+    expect(out[0].chatter_name ?? null).toBeNull();
+  });
+
   it('ignores junk lines that are not sales', () => {
     const text = `Spenders Online
 Jun 14, 2026 11:08 pm\t$5.69\t$1.14\t$4.55

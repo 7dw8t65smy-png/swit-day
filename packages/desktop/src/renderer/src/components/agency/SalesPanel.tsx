@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ClipboardPaste, Trash2, Ban, Check, FilterX, RefreshCw } from 'lucide-react';
+import { ClipboardPaste, Trash2, Ban, Check, FilterX, RefreshCw, X } from 'lucide-react';
 import { SHIFT_LABELS, SHIFTS } from '@swit/shared';
 import type { AgencySale } from '@swit/shared';
 import { api } from '../../api';
@@ -27,6 +27,7 @@ interface Filters {
 
 const EMPTY: Filters = { model_id: '', chatter_id: '', shift: '', from: '', to: '' };
 const fCls = 'h-9 px-2 rounded-md border border-border bg-surface text-xs';
+const NONE = '__none__';
 
 export default function SalesPanel() {
   const agencyId = useAgencyStore((s) => s.selectedId);
@@ -38,6 +39,8 @@ export default function SalesPanel() {
   const [filters, setFilters] = useState<Filters>(EMPTY);
   const [showImport, setShowImport] = useState(false);
   const [recomputing, setRecomputing] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const modelName = (id: string): string => models.find((m) => m.id === id)?.name ?? '—';
 
@@ -59,55 +62,102 @@ export default function SalesPanel() {
   }, [load]);
   useRealtimeRefetch(() => void load());
 
+  // Снимаем выделение при смене фильтров (видимый набор изменился).
+  useEffect(() => {
+    setSelected(new Set());
+  }, [filters]);
+
+  function toggleSel(id: string): void {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  const allSelected = sales.length > 0 && sales.every((s) => selected.has(s.id));
+  function toggleAll(): void {
+    setSelected(allSelected ? new Set() : new Set(sales.map((s) => s.id)));
+  }
+
   async function reassign(s: AgencySale, chatterId: string): Promise<void> {
     await api.updateAgencySale(s.id, { chatter_id: chatterId || null });
     await load();
+    useAuth.getState().bumpData();
   }
 
   async function toggleCounts(s: AgencySale): Promise<void> {
     const next = s.counts_for_payout ? 0 : 1;
-    await api.updateAgencySale(s.id, {
-      counts_for_payout: next,
-      excluded_reason: next ? null : 'Исключено вручную'
-    });
+    await api.updateAgencySale(s.id, { counts_for_payout: next, excluded_reason: next ? null : 'Исключено вручную' });
     await load();
+    useAuth.getState().bumpData();
   }
 
   async function remove(s: AgencySale): Promise<void> {
     if (!confirm('Удалить продажу?')) return;
     await api.deleteAgencySale(s.id);
     await load();
+    useAuth.getState().bumpData();
   }
 
-  // Пересчитать продажи по текущим настройкам (типы в ЗП + правила сумм)
-  // и пересинхронизировать смену со сменой назначенного чаттера.
   async function recompute(): Promise<void> {
     if (!agencyId) return;
     setRecomputing(true);
     try {
       const res = await api.recomputeAgencySales(agencyId);
       await load();
-      useAuth.getState().bumpData(); // обновить «Выплаты» в этом же окне
+      useAuth.getState().bumpData();
       pushToast({ kind: 'info', message: `Обновлено продаж: ${res.updated}` });
     } finally {
       setRecomputing(false);
     }
   }
 
-  // Создать правило исключения по сумме + сразу исключить все загруженные продажи с этой суммой.
-  // Ярлык ставим автоматически (window.prompt в Electron не работает); переименовать
-  // или удалить правило можно в настройках агентства.
   async function makeRule(s: AgencySale): Promise<void> {
     if (!agencyId) return;
     if (!confirm(`Не учитывать в ЗП все продажи на сумму $${s.amount.toFixed(2)}? Будет создано правило исключения.`)) return;
     const label = `Исключение $${s.amount.toFixed(2)}`;
     await api.createAgencyRule({ agency_id: agencyId, amount: s.amount, label });
-    // Применяем правило ко ВСЕМ продажам агентства, а не только к видимой странице.
     const res = await api.recomputeAgencySales(agencyId);
-    await reloadEntities(); // правила обновились
+    await reloadEntities();
     await load();
     useAuth.getState().bumpData();
     pushToast({ kind: 'info', message: `Правило добавлено. Пересчитано продаж: ${res.updated}` });
+  }
+
+  // ----- Массовые действия над выделенными -----
+  async function bulkRun(fn: (id: string) => Promise<unknown>, after?: string): Promise<void> {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      await Promise.all(ids.map((id) => fn(id)));
+      setSelected(new Set());
+      await load();
+      useAuth.getState().bumpData();
+      if (after) pushToast({ kind: 'info', message: after });
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+  function bulkChatter(val: string): void {
+    if (!val) return;
+    const chatter_id = val === NONE ? null : val;
+    void bulkRun((id) => api.updateAgencySale(id, { chatter_id }), 'Чаттер проставлен выделенным');
+  }
+  function bulkModel(val: string): void {
+    if (!val) return;
+    void bulkRun((id) => api.updateAgencySale(id, { model_id: val }), 'Модель проставлена выделенным');
+  }
+  function bulkCounts(next: 0 | 1): void {
+    void bulkRun(
+      (id) => api.updateAgencySale(id, { counts_for_payout: next, excluded_reason: next ? null : 'Исключено вручную' }),
+      next ? 'Включено в ЗП' : 'Исключено из ЗП'
+    );
+  }
+  async function bulkDelete(): Promise<void> {
+    if (!confirm(`Удалить выделенные продажи (${selected.size})?`)) return;
+    await bulkRun((id) => api.deleteAgencySale(id), 'Удалено');
   }
 
   if (!agencyId) return null;
@@ -161,6 +211,51 @@ export default function SalesPanel() {
         )}
       </div>
 
+      {/* Панель массовых действий */}
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-3 px-3 py-2 rounded-lg border border-accent/40 bg-accent/10 animate-rise">
+          <span className="text-sm font-medium text-ink">Выбрано: {selected.size}</span>
+          <span className="w-px h-5 bg-border" />
+          <select
+            value=""
+            disabled={bulkBusy}
+            onChange={(e) => { bulkChatter(e.target.value); e.target.value = ''; }}
+            className={fCls}
+            title="Назначить чаттера выделенным"
+          >
+            <option value="">Чаттер →</option>
+            <option value={NONE}>— снять —</option>
+            {chatters.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <select
+            value=""
+            disabled={bulkBusy}
+            onChange={(e) => { bulkModel(e.target.value); e.target.value = ''; }}
+            className={fCls}
+            title="Назначить модель выделенным"
+          >
+            <option value="">Модель →</option>
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+          <button onClick={() => bulkCounts(1)} disabled={bulkBusy} className="h-9 px-2.5 rounded-md border border-border bg-surface text-xs text-green-600 hover:bg-surface2 flex items-center gap-1">
+            <Check size={13} /> В ЗП
+          </button>
+          <button onClick={() => bulkCounts(0)} disabled={bulkBusy} className="h-9 px-2.5 rounded-md border border-border bg-surface text-xs text-muted hover:bg-surface2 flex items-center gap-1">
+            <Ban size={13} /> Не в ЗП
+          </button>
+          <button onClick={() => void bulkDelete()} disabled={bulkBusy} className="h-9 px-2.5 rounded-md border border-border bg-surface text-xs text-danger hover:bg-surface2 flex items-center gap-1">
+            <Trash2 size={13} /> Удалить
+          </button>
+          <button onClick={() => setSelected(new Set())} className="h-9 px-2 rounded-md text-xs text-faint hover:text-ink flex items-center gap-1" title="Снять выделение">
+            <X size={14} /> Снять
+          </button>
+        </div>
+      )}
+
       {sales.length === 0 ? (
         <div className="text-sm text-faint border border-dashed border-border rounded-lg py-10 text-center">
           Нет продаж{hasFilters ? ' по фильтрам' : ''}. Нажмите «Вставить продажи», чтобы добавить.
@@ -170,6 +265,9 @@ export default function SalesPanel() {
           <table className="w-full text-xs">
             <thead className="bg-surface2 text-muted">
               <tr>
+                <th className="px-2 py-2 w-8 text-center">
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} title="Выбрать все" />
+                </th>
                 <th className="text-left font-medium px-2 py-2">Дата</th>
                 <th className="text-left font-medium px-2 py-2">Модель</th>
                 <th className="text-left font-medium px-2 py-2">Фанат</th>
@@ -183,50 +281,56 @@ export default function SalesPanel() {
               </tr>
             </thead>
             <tbody>
-              {sales.map((s) => (
-                <tr key={s.id} className={`border-t border-border group ${s.counts_for_payout ? '' : 'opacity-60'}`}>
-                  <td className="px-2 py-1.5 whitespace-nowrap text-ink">{s.local_date}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{modelName(s.model_id)}</td>
-                  <td className="px-2 py-1.5 truncate max-w-[120px]">{s.fan_name ?? '—'}</td>
-                  <td className="px-2 py-1.5">{KIND_LABEL[s.kind] ?? s.kind}</td>
-                  <td className="px-2 py-1.5 text-right timer-font">${s.amount.toFixed(2)}</td>
-                  <td className="px-2 py-1.5 text-right timer-font">${s.net.toFixed(2)}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{s.shift ? SHIFT_LABELS[s.shift] : '—'}</td>
-                  <td className="px-2 py-1.5">
-                    <select
-                      value={s.chatter_id ?? ''}
-                      onChange={(e) => void reassign(s, e.target.value)}
-                      className={`h-7 px-1 rounded border text-xs bg-surface max-w-[120px] ${
-                        s.chatter_id ? 'border-border text-ink' : 'border-dashed border-amber-500 text-amber-600'
-                      }`}
-                    >
-                      <option value="">— не определён —</option>
-                      {chatters.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-2 py-1.5 text-center">
-                    <button
-                      onClick={() => void toggleCounts(s)}
-                      title={s.counts_for_payout ? `В ЗП — выключить${s.excluded_reason ? ` (${s.excluded_reason})` : ''}` : `Не в ЗП${s.excluded_reason ? ` (${s.excluded_reason})` : ''} — включить`}
-                      className={s.counts_for_payout ? 'text-green-600' : 'text-faint'}
-                    >
-                      {s.counts_for_payout ? <Check size={15} /> : <Ban size={15} />}
-                    </button>
-                  </td>
-                  <td className="px-2 py-1.5 whitespace-nowrap text-right">
-                    <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100">
-                      <button onClick={() => void makeRule(s)} className="text-faint hover:text-accent text-[11px]" title="Создать правило исключения для этой суммы">
-                        правило
+              {sales.map((s) => {
+                const sel = selected.has(s.id);
+                return (
+                  <tr key={s.id} className={`border-t border-border group ${sel ? 'bg-accent/5' : ''} ${s.counts_for_payout ? '' : 'opacity-60'}`}>
+                    <td className="px-2 py-1.5 text-center">
+                      <input type="checkbox" checked={sel} onChange={() => toggleSel(s.id)} />
+                    </td>
+                    <td className="px-2 py-1.5 whitespace-nowrap text-ink">{s.local_date}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">{modelName(s.model_id)}</td>
+                    <td className="px-2 py-1.5 truncate max-w-[120px]">{s.fan_name ?? '—'}</td>
+                    <td className="px-2 py-1.5">{KIND_LABEL[s.kind] ?? s.kind}</td>
+                    <td className="px-2 py-1.5 text-right timer-font">${s.amount.toFixed(2)}</td>
+                    <td className="px-2 py-1.5 text-right timer-font">${s.net.toFixed(2)}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">{s.shift ? SHIFT_LABELS[s.shift] : '—'}</td>
+                    <td className="px-2 py-1.5">
+                      <select
+                        value={s.chatter_id ?? ''}
+                        onChange={(e) => void reassign(s, e.target.value)}
+                        className={`h-7 px-1 rounded border text-xs bg-surface max-w-[120px] ${
+                          s.chatter_id ? 'border-border text-ink' : 'border-dashed border-amber-500 text-amber-600'
+                        }`}
+                      >
+                        <option value="">— не определён —</option>
+                        {chatters.map((c) => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-2 py-1.5 text-center">
+                      <button
+                        onClick={() => void toggleCounts(s)}
+                        title={s.counts_for_payout ? `В ЗП — выключить${s.excluded_reason ? ` (${s.excluded_reason})` : ''}` : `Не в ЗП${s.excluded_reason ? ` (${s.excluded_reason})` : ''} — включить`}
+                        className={s.counts_for_payout ? 'text-green-600' : 'text-faint'}
+                      >
+                        {s.counts_for_payout ? <Check size={15} /> : <Ban size={15} />}
                       </button>
-                      <button onClick={() => void remove(s)} className="text-faint hover:text-danger" title="Удалить">
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-2 py-1.5 whitespace-nowrap text-right">
+                      <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100">
+                        <button onClick={() => void makeRule(s)} className="text-faint hover:text-accent text-[11px]" title="Создать правило исключения для этой суммы">
+                          правило
+                        </button>
+                        <button onClick={() => void remove(s)} className="text-faint hover:text-danger" title="Удалить">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

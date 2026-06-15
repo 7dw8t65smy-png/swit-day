@@ -686,6 +686,9 @@ export interface ParsedSale {
   kind: AgencySaleKind;
   fan_name: string | null;
   raw_line: string;
+  // Распознаны из табличной вставки (столбцы модель/чаттер). null — не было в строке.
+  model_name?: string | null;
+  chatter_name?: string | null;
 }
 
 /** Итог выплаты по одному чаттеру за период. */
