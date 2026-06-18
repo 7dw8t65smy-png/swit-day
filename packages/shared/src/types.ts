@@ -613,6 +613,8 @@ export interface AgencyModel {
   agency_id: string;
   name: string;
   of_username: string | null;
+  // Справочная «ставка по модели» (метка, на расчёты не влияет).
+  rate: number;
   active: number;
   notes: string | null;
   sort_order: number;

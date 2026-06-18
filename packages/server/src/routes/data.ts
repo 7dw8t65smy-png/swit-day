@@ -175,7 +175,7 @@ const TABLES = [
   },
   {
     name: 'agency_models',
-    columns: ['id', 'agency_id', 'name', 'of_username', 'active', 'notes', 'sort_order', 'created_at', 'updated_at']
+    columns: ['id', 'agency_id', 'name', 'of_username', 'rate', 'active', 'notes', 'sort_order', 'created_at', 'updated_at']
   },
   {
     name: 'agency_chatters',

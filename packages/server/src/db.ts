@@ -41,6 +41,7 @@ ensureColumn('agency_sales', 'manual_payout', 'INTEGER NOT NULL DEFAULT 0');
 // Агентства: комиссия (пул тим-лидов) + фиксированная ставка.
 ensureColumn('agencies', 'commission_percent', 'REAL NOT NULL DEFAULT 5');
 ensureColumn('agencies', 'base_salary', 'REAL NOT NULL DEFAULT 0');
+ensureColumn('agency_models', 'rate', 'REAL NOT NULL DEFAULT 0');
 
 // Старая схема имела UNIQUE на journal_entries.date. Теперь допустимо
 // несколько записей за один день. UNIQUE в SQLite не снимается ALTER'ом —

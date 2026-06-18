@@ -1,7 +1,7 @@
 // Экспорт продаж агентства в .xlsx (SheetJS). Колонки повторяют таблицу продаж.
 import * as XLSX from 'xlsx';
 import { SHIFT_LABELS } from '@swit/shared';
-import type { AgencySale, AgencyShift } from '@swit/shared';
+import type { AgencySale, AgencyShift, AgencyShiftRow } from '@swit/shared';
 
 const KIND_LABEL: Record<string, string> = {
   message: 'Сообщение',
@@ -54,4 +54,27 @@ export function exportSalesToXlsx(sales: AgencySale[], opts: ExportOpts): void {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Продажи');
   XLSX.writeFile(wb, opts.fileName ?? 'Продажи.xlsx');
+}
+
+/** Отчёт по сменам за период в .xlsx. */
+export function exportShiftsToXlsx(rows: AgencyShiftRow[], fileName?: string): void {
+  const data = rows.map((r) => ({
+    Дата: r.date,
+    Смена: r.shift ? SHIFT_LABELS[r.shift] : '—',
+    Чаттер: r.chatter_name,
+    Модель: r.model_name,
+    Продаж: r.manual && r.count === 0 ? '' : r.count,
+    NET: r.net,
+    'Выплата чаттеру': r.payout,
+    Фикс: r.is_fixed ? 'Да' : '',
+    Заметка: r.note ?? ''
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  ws['!cols'] = [
+    { wch: 12 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 8 }, { wch: 10 }, { wch: 15 }, { wch: 7 }, { wch: 30 }
+  ];
+  ws['!autofilter'] = { ref: `A1:I${data.length + 1}` };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Смены');
+  XLSX.writeFile(wb, fileName ?? 'Смены.xlsx');
 }

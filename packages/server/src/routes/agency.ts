@@ -85,6 +85,7 @@ interface ModelInput {
   agency_id: string;
   name: string;
   of_username?: string | null;
+  rate?: number;
   active?: number;
   notes?: string | null;
   sort_order?: number;
@@ -205,13 +206,14 @@ export function registerAgency(app: FastifyInstance): void {
     const t = nowIso();
     const b = req.body;
     db.prepare(
-      `INSERT INTO agency_models (id, agency_id, name, of_username, active, notes, sort_order, created_at, updated_at, workspace_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO agency_models (id, agency_id, name, of_username, rate, active, notes, sort_order, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       b.agency_id,
       b.name,
       b.of_username ?? null,
+      b.rate ?? 0,
       b.active ?? 1,
       b.notes ?? null,
       b.sort_order ?? 0,
@@ -229,8 +231,8 @@ export function registerAgency(app: FastifyInstance): void {
     if (!cur) throw new Error('not found');
     const n = { ...cur, ...req.body, updated_at: nowIso() };
     db.prepare(
-      `UPDATE agency_models SET name=?, of_username=?, active=?, notes=?, sort_order=?, updated_at=? WHERE id=?`
-    ).run(n.name, n.of_username, n.active, n.notes, n.sort_order, n.updated_at, cur.id);
+      `UPDATE agency_models SET name=?, of_username=?, rate=?, active=?, notes=?, sort_order=?, updated_at=? WHERE id=?`
+    ).run(n.name, n.of_username, n.rate ?? 0, n.active, n.notes, n.sort_order, n.updated_at, cur.id);
     return db.prepare('SELECT * FROM agency_models WHERE id = ?').get(cur.id) as AgencyModel;
   });
 

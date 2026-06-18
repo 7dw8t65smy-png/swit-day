@@ -556,7 +556,7 @@ export const api = {
 
   agencyModels: (agencyId: string) =>
     req<AgencyModel[]>('GET', `/agency/models?agency_id=${agencyId}`),
-  createAgencyModel: (b: { agency_id: string; name: string; of_username?: string | null; notes?: string | null }) =>
+  createAgencyModel: (b: { agency_id: string; name: string; of_username?: string | null; rate?: number; notes?: string | null }) =>
     req<AgencyModel>('POST', '/agency/models', b),
   updateAgencyModel: (id: string, b: Partial<AgencyModel>) =>
     req<AgencyModel>('PATCH', `/agency/models/${id}`, b),

@@ -426,6 +426,7 @@ CREATE TABLE IF NOT EXISTS agency_models (
   agency_id   TEXT NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
   name        TEXT NOT NULL,
   of_username TEXT,
+  rate        REAL NOT NULL DEFAULT 0,   -- справочная ставка по модели (метка)
   active      INTEGER NOT NULL DEFAULT 1,
   notes       TEXT,
   sort_order  INTEGER DEFAULT 0,
