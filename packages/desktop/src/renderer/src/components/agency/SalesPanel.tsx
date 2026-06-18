@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ClipboardPaste, Trash2, Ban, Check, FilterX, RefreshCw, X } from 'lucide-react';
+import { ClipboardPaste, Trash2, Ban, Check, FilterX, RefreshCw, X, Download } from 'lucide-react';
 import { SHIFT_LABELS, SHIFTS } from '@swit/shared';
 import type { AgencySale } from '@swit/shared';
 import { api } from '../../api';
@@ -7,6 +7,7 @@ import { useAgencyStore } from '../../lib/agency';
 import { useAuth } from '../../lib/auth';
 import { useRealtimeRefetch } from '../../hooks/useRealtimeRefetch';
 import { pushToast } from '../../hooks/useToasts';
+import { exportSalesToXlsx } from '../../lib/agencyExport';
 import SalesImportModal from './SalesImportModal';
 
 const KIND_LABEL: Record<string, string> = {
@@ -31,9 +32,11 @@ const NONE = '__none__';
 
 export default function SalesPanel() {
   const agencyId = useAgencyStore((s) => s.selectedId);
+  const agencies = useAgencyStore((s) => s.agencies);
   const models = useAgencyStore((s) => s.models);
   const chatters = useAgencyStore((s) => s.chatters);
   const reloadEntities = useAgencyStore((s) => s.reloadEntities);
+  const [exporting, setExporting] = useState(false);
 
   const [sales, setSales] = useState<AgencySale[]>([]);
   const [filters, setFilters] = useState<Filters>(EMPTY);
@@ -125,6 +128,37 @@ export default function SalesPanel() {
     pushToast({ kind: 'info', message: `Правило добавлено. Пересчитано продаж: ${res.updated}` });
   }
 
+  // Экспорт в Excel: текущая выборка (с учётом фильтров) или все продажи.
+  async function exportXlsx(): Promise<void> {
+    if (!agencyId) return;
+    setExporting(true);
+    try {
+      const list = await api.agencySales({
+        agency_id: agencyId,
+        model_id: filters.model_id || undefined,
+        chatter_id: filters.chatter_id || undefined,
+        shift: filters.shift || undefined,
+        from: filters.from || undefined,
+        to: filters.to || undefined,
+        limit: 5000
+      });
+      if (list.length === 0) {
+        pushToast({ kind: 'info', message: 'Нет продаж для экспорта' });
+        return;
+      }
+      const agencyName = agencies.find((a) => a.id === agencyId)?.name ?? 'Агентство';
+      const period = filters.from || filters.to ? ` ${filters.from || '…'}—${filters.to || '…'}` : '';
+      exportSalesToXlsx(list, {
+        modelName,
+        chatterName: (id) => (id ? chatters.find((c) => c.id === id)?.name ?? '—' : '— не определён —'),
+        fileName: `Продажи ${agencyName}${period}.xlsx`
+      });
+      pushToast({ kind: 'info', message: `Экспортировано: ${list.length}` });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   // ----- Массовые действия над выделенными -----
   async function bulkRun(fn: (id: string) => Promise<unknown>, after?: string): Promise<void> {
     const ids = [...selected];
@@ -179,6 +213,14 @@ export default function SalesPanel() {
           className="px-3 h-9 rounded-md text-sm flex items-center gap-1.5 border border-border bg-surface text-muted hover:text-ink transition disabled:opacity-50"
         >
           <RefreshCw size={14} className={recomputing ? 'animate-spin' : ''} /> Обновить
+        </button>
+        <button
+          onClick={() => void exportXlsx()}
+          disabled={exporting}
+          title="Экспортировать в Excel (текущая выборка или всё)"
+          className="px-3 h-9 rounded-md text-sm flex items-center gap-1.5 border border-border bg-surface text-muted hover:text-ink transition disabled:opacity-50"
+        >
+          <Download size={14} /> Экспорт
         </button>
 
         <span className="flex-1" />

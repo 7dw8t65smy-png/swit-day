@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Settings as Gear, Building2, Users, ClipboardList, Wallet, X, ChevronDown } from 'lucide-react';
+import { Plus, Settings as Gear, Building2, Users, ClipboardList, Wallet, X, ChevronDown, CalendarClock } from 'lucide-react';
 import { SHIFTS } from '@swit/shared';
 import { api } from '../api';
 import { useAgencyStore } from '../lib/agency';
@@ -8,14 +8,16 @@ import ModelsBoard from '../components/agency/ModelsBoard';
 import ChattersPanel from '../components/agency/ChattersPanel';
 import SalesPanel from '../components/agency/SalesPanel';
 import PayoutsPanel from '../components/agency/PayoutsPanel';
+import ShiftsPanel from '../components/agency/ShiftsPanel';
 import AgencySettings from '../components/agency/AgencySettings';
 
-type Tab = 'models' | 'chatters' | 'sales' | 'payouts';
+type Tab = 'models' | 'chatters' | 'sales' | 'shifts' | 'payouts';
 
 const TABS: { key: Tab; label: string; icon: typeof Users }[] = [
   { key: 'models', label: 'Модели', icon: Building2 },
   { key: 'chatters', label: 'Чаттеры', icon: Users },
   { key: 'sales', label: 'Продажи', icon: ClipboardList },
+  { key: 'shifts', label: 'Смены', icon: CalendarClock },
   { key: 'payouts', label: 'Выплаты', icon: Wallet }
 ];
 
@@ -199,6 +201,7 @@ export default function Agency() {
             {tab === 'models' && <ModelsBoard />}
             {tab === 'chatters' && <ChattersPanel />}
             {tab === 'sales' && <SalesPanel />}
+            {tab === 'shifts' && <ShiftsPanel />}
             {tab === 'payouts' && <PayoutsPanel />}
           </div>
         </>

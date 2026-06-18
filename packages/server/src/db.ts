@@ -111,7 +111,8 @@ export const WORKSPACE_TABLES = [
   'agency_assignments',
   'agency_payout_rules',
   'agency_sales',
-  'agency_leads'
+  'agency_leads',
+  'agency_shifts'
 ] as const;
 
 // Добавляет workspace_id ко всем контент-таблицам (и свежим, и старым). Колонка

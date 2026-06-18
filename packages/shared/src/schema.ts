@@ -405,6 +405,22 @@ CREATE TABLE IF NOT EXISTS agency_leads (
 );
 CREATE INDEX IF NOT EXISTS idx_agency_leads_agency ON agency_leads(agency_id);
 
+-- Журнал смен: заметка/пометка «фикс»/ручная смена, привязанные к
+-- (чаттер, модель, дата, смена). Заработок берётся из agency_sales (не хранится).
+CREATE TABLE IF NOT EXISTS agency_shifts (
+  id          TEXT PRIMARY KEY,
+  agency_id   TEXT NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
+  chatter_id  TEXT REFERENCES agency_chatters(id) ON DELETE CASCADE,
+  model_id    TEXT REFERENCES agency_models(id) ON DELETE CASCADE,
+  date        TEXT NOT NULL,           -- YYYY-MM-DD (МСК)
+  shift       TEXT,                    -- morning|day|evening|night
+  note        TEXT,
+  is_fixed    INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agency_shifts_agency ON agency_shifts(agency_id, date);
+
 CREATE TABLE IF NOT EXISTS agency_models (
   id          TEXT PRIMARY KEY,
   agency_id   TEXT NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,

@@ -44,6 +44,7 @@ import type {
   AgencySale,
   AgencySaleKind,
   AgencyShift,
+  AgencyShiftRow,
   AgencyPayoutSummary,
   ParsedSale
 } from '@swit/shared';
@@ -649,7 +650,39 @@ export const api = {
       Object.fromEntries(Object.entries(q).filter(([, v]) => v !== undefined && v !== ''))
     ).toString();
     return req<AgencyPayoutSummary>('GET', `/agency/payouts?${qs}`);
-  }
+  },
+
+  agencyShifts: (q: {
+    agency_id: string;
+    from?: string;
+    to?: string;
+    chatter_id?: string;
+    model_id?: string;
+  }) => {
+    const qs = new URLSearchParams(
+      Object.fromEntries(Object.entries(q).filter(([, v]) => v !== undefined && v !== ''))
+    ).toString();
+    return req<AgencyShiftRow[]>('GET', `/agency/shifts?${qs}`);
+  },
+  createAgencyShift: (b: {
+    agency_id: string;
+    chatter_id?: string | null;
+    model_id?: string | null;
+    date: string;
+    shift?: AgencyShift | null;
+    note?: string | null;
+    is_fixed?: number;
+  }) => req<unknown>('POST', '/agency/shifts', b),
+  upsertAgencyShift: (b: {
+    agency_id: string;
+    chatter_id?: string | null;
+    model_id?: string | null;
+    date: string;
+    shift?: AgencyShift | null;
+    note?: string | null;
+    is_fixed?: number;
+  }) => req<unknown>('PUT', '/agency/shifts', b),
+  deleteAgencyShift: (id: string) => req<{ ok: true }>('DELETE', `/agency/shifts/${id}`)
 };
 
 export function notify(title: string, body?: string): void {

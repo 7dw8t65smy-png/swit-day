@@ -574,6 +574,24 @@ export interface Agency {
   updated_at: string;
 }
 
+/** Строка журнала смен: кто/когда/на какой модели работал, заработок из продаж + заметка. */
+export interface AgencyShiftRow {
+  // id записи agency_shifts (заметка/фикс/ручная смена). null — чисто авто из продаж.
+  id: string | null;
+  date: string; // YYYY-MM-DD (МСК)
+  shift: AgencyShift | null;
+  chatter_id: string | null;
+  chatter_name: string;
+  model_id: string | null;
+  model_name: string;
+  count: number; // продаж за смену
+  net: number; // NET за смену (все продажи)
+  payout: number; // выплата чаттеру: NET «в ЗП» × его %
+  is_fixed: number; // 1 — помечено «фикс на модели в этот день»
+  note: string | null;
+  manual: number; // 1 — ручная запись (без продаж)
+}
+
 /** Тим-лид агентства: делит пул комиссии (commission_percent × NET) по своему %. */
 export interface AgencyLead {
   id: string;

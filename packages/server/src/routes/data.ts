@@ -170,6 +170,10 @@ const TABLES = [
     columns: ['id', 'agency_id', 'name', 'share_percent', 'trc20', 'color', 'active', 'sort_order', 'notes', 'created_at', 'updated_at']
   },
   {
+    name: 'agency_shifts',
+    columns: ['id', 'agency_id', 'chatter_id', 'model_id', 'date', 'shift', 'note', 'is_fixed', 'created_at', 'updated_at']
+  },
+  {
     name: 'agency_models',
     columns: ['id', 'agency_id', 'name', 'of_username', 'active', 'notes', 'sort_order', 'created_at', 'updated_at']
   },

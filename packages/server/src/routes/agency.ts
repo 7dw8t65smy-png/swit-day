@@ -16,6 +16,7 @@ import type {
   AgencySale,
   AgencySaleKind,
   AgencyShift,
+  AgencyShiftRow,
   ParsedSale
 } from '@swit/shared';
 
@@ -828,6 +829,179 @@ export function registerAgency(app: FastifyInstance): void {
   app.delete<{ Params: { id: string } }>('/agency/leads/:id', (req) => {
     const r = db
       .prepare('DELETE FROM agency_leads WHERE id = ? AND workspace_id IS ?')
+      .run(req.params.id, req.workspaceId ?? null);
+    if (r.changes === 0) throw new Error('not found');
+    return { ok: true };
+  });
+
+  // ---------- Shifts (журнал смен: авто из продаж + заметки/фикс/ручные) ----------
+
+  interface ShiftBody {
+    agency_id: string;
+    chatter_id?: string | null;
+    model_id?: string | null;
+    date: string;
+    shift?: AgencyShift | null;
+    note?: string | null;
+    is_fixed?: number;
+  }
+  interface ShiftRec {
+    id: string;
+    chatter_id: string | null;
+    model_id: string | null;
+    date: string;
+    shift: string | null;
+    note: string | null;
+    is_fixed: number;
+  }
+
+  app.get<{ Querystring: { agency_id?: string; from?: string; to?: string; chatter_id?: string; model_id?: string } }>(
+    '/agency/shifts',
+    (req) => {
+      const ws = req.workspaceId ?? null;
+      const { agency_id, from, to, chatter_id, model_id } = req.query;
+      if (!agency_id) throw new Error('agency_id required');
+      const agency = requireAgency(ws, agency_id);
+
+      const filt = (dateCol: string): { where: string; params: unknown[] } => {
+        const w = ['workspace_id IS ?', 'agency_id = ?'];
+        const p: unknown[] = [ws, agency_id];
+        if (from) { w.push(`${dateCol} >= ?`); p.push(from); }
+        if (to) { w.push(`${dateCol} <= ?`); p.push(to); }
+        if (chatter_id) { w.push('chatter_id = ?'); p.push(chatter_id); }
+        if (model_id) { w.push('model_id = ?'); p.push(model_id); }
+        return { where: w.join(' AND '), params: p };
+      };
+
+      const a = filt('local_date');
+      const agg = db
+        .prepare(
+          `SELECT chatter_id, model_id, local_date AS date, shift,
+                  COUNT(*) AS cnt, COALESCE(SUM(net),0) AS net,
+                  COALESCE(SUM(CASE WHEN counts_for_payout=1 THEN net ELSE 0 END),0) AS net_payable
+           FROM agency_sales WHERE ${a.where}
+           GROUP BY chatter_id, model_id, local_date, shift`
+        )
+        .all(...a.params) as {
+        chatter_id: string | null; model_id: string | null; date: string; shift: string | null;
+        cnt: number; net: number; net_payable: number;
+      }[];
+
+      const r = filt('date');
+      const recs = db
+        .prepare(`SELECT id, chatter_id, model_id, date, shift, note, is_fixed FROM agency_shifts WHERE ${r.where}`)
+        .all(...r.params) as ShiftRec[];
+
+      const chatters = db
+        .prepare('SELECT id, name, percent FROM agency_chatters WHERE agency_id = ? AND workspace_id IS ?')
+        .all(agency_id, ws) as { id: string; name: string; percent: number | null }[];
+      const cmap = new Map(chatters.map((c) => [c.id, c]));
+      const models = db
+        .prepare('SELECT id, name FROM agency_models WHERE agency_id = ? AND workspace_id IS ?')
+        .all(agency_id, ws) as { id: string; name: string }[];
+      const mmap = new Map(models.map((m) => [m.id, m.name]));
+
+      const key = (c: string | null, m: string | null, d: string, s: string | null): string =>
+        `${c ?? ''}|${m ?? ''}|${d}|${s ?? ''}`;
+      const recByKey = new Map<string, ShiftRec>();
+      for (const rec of recs) recByKey.set(key(rec.chatter_id, rec.model_id, rec.date, rec.shift), rec);
+
+      const cname = (id: string | null): string =>
+        id ? cmap.get(id)?.name ?? '—' : '— не определён —';
+      const mname = (id: string | null): string => (id ? mmap.get(id) ?? '—' : '—');
+      const pct = (id: string | null): number => (id ? cmap.get(id)?.percent : null) ?? agency.default_percent;
+
+      const rows: AgencyShiftRow[] = [];
+      for (const g of agg) {
+        const k = key(g.chatter_id, g.model_id, g.date, g.shift);
+        const rec = recByKey.get(k);
+        recByKey.delete(k);
+        rows.push({
+          id: rec?.id ?? null,
+          date: g.date,
+          shift: (g.shift as AgencyShift) ?? null,
+          chatter_id: g.chatter_id,
+          chatter_name: cname(g.chatter_id),
+          model_id: g.model_id,
+          model_name: mname(g.model_id),
+          count: g.cnt,
+          net: +g.net.toFixed(2),
+          payout: +((g.net_payable * pct(g.chatter_id)) / 100).toFixed(2),
+          is_fixed: rec?.is_fixed ?? 0,
+          note: rec?.note ?? null,
+          manual: 0
+        });
+      }
+      for (const rec of recByKey.values()) {
+        rows.push({
+          id: rec.id,
+          date: rec.date,
+          shift: (rec.shift as AgencyShift) ?? null,
+          chatter_id: rec.chatter_id,
+          chatter_name: cname(rec.chatter_id),
+          model_id: rec.model_id,
+          model_name: mname(rec.model_id),
+          count: 0,
+          net: 0,
+          payout: 0,
+          is_fixed: rec.is_fixed,
+          note: rec.note,
+          manual: 1
+        });
+      }
+      rows.sort(
+        (x, y) =>
+          y.date.localeCompare(x.date) ||
+          (x.shift ?? '').localeCompare(y.shift ?? '') ||
+          x.chatter_name.localeCompare(y.chatter_name)
+      );
+      return rows;
+    }
+  );
+
+  // Создать ручную смену.
+  app.post<{ Body: ShiftBody }>('/agency/shifts', (req) => {
+    const ws = req.workspaceId ?? null;
+    const b = req.body;
+    requireAgency(ws, b.agency_id);
+    const id = nanoid();
+    const t = nowIso();
+    db.prepare(
+      `INSERT INTO agency_shifts (id, agency_id, chatter_id, model_id, date, shift, note, is_fixed, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, b.agency_id, b.chatter_id ?? null, b.model_id ?? null, b.date, b.shift ?? null, b.note ?? null, b.is_fixed ? 1 : 0, t, t, ws);
+    return db.prepare('SELECT * FROM agency_shifts WHERE id = ?').get(id);
+  });
+
+  // Заметка/фикс по «естественному ключу» смены (чаттер+модель+дата+смена) — upsert.
+  app.put<{ Body: ShiftBody }>('/agency/shifts', (req) => {
+    const ws = req.workspaceId ?? null;
+    const b = req.body;
+    requireAgency(ws, b.agency_id);
+    const found = db
+      .prepare(
+        `SELECT * FROM agency_shifts WHERE agency_id = ? AND workspace_id IS ?
+         AND date = ? AND chatter_id IS ? AND model_id IS ? AND shift IS ?`
+      )
+      .get(b.agency_id, ws, b.date, b.chatter_id ?? null, b.model_id ?? null, b.shift ?? null) as ShiftRec | undefined;
+    const t = nowIso();
+    if (found) {
+      const note = b.note !== undefined ? b.note : found.note;
+      const isf = b.is_fixed !== undefined ? (b.is_fixed ? 1 : 0) : found.is_fixed;
+      db.prepare('UPDATE agency_shifts SET note = ?, is_fixed = ?, updated_at = ? WHERE id = ?').run(note ?? null, isf, t, found.id);
+      return db.prepare('SELECT * FROM agency_shifts WHERE id = ?').get(found.id);
+    }
+    const id = nanoid();
+    db.prepare(
+      `INSERT INTO agency_shifts (id, agency_id, chatter_id, model_id, date, shift, note, is_fixed, created_at, updated_at, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, b.agency_id, b.chatter_id ?? null, b.model_id ?? null, b.date, b.shift ?? null, b.note ?? null, b.is_fixed ? 1 : 0, t, t, ws);
+    return db.prepare('SELECT * FROM agency_shifts WHERE id = ?').get(id);
+  });
+
+  app.delete<{ Params: { id: string } }>('/agency/shifts/:id', (req) => {
+    const r = db
+      .prepare('DELETE FROM agency_shifts WHERE id = ? AND workspace_id IS ?')
       .run(req.params.id, req.workspaceId ?? null);
     if (r.changes === 0) throw new Error('not found');
     return { ok: true };
