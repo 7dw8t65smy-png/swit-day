@@ -875,17 +875,20 @@ export function registerAgency(app: FastifyInstance): void {
         return { where: w.join(' AND '), params: p };
       };
 
+      // Заработок тянется по ДАТЕ: агрегируем продажи по (чаттер, модель, дата),
+      // игнорируя поле «смена» в продаже (оно ненадёжно). Смена записи берётся из
+      // ручной расстановки (agency_shifts) либо из фиксированной смены чаттера.
       const a = filt('local_date');
       const agg = db
         .prepare(
-          `SELECT chatter_id, model_id, local_date AS date, shift,
+          `SELECT chatter_id, model_id, local_date AS date,
                   COUNT(*) AS cnt, COALESCE(SUM(net),0) AS net,
                   COALESCE(SUM(CASE WHEN counts_for_payout=1 THEN net ELSE 0 END),0) AS net_payable
            FROM agency_sales WHERE ${a.where}
-           GROUP BY chatter_id, model_id, local_date, shift`
+           GROUP BY chatter_id, model_id, local_date`
         )
         .all(...a.params) as {
-        chatter_id: string | null; model_id: string | null; date: string; shift: string | null;
+        chatter_id: string | null; model_id: string | null; date: string;
         cnt: number; net: number; net_payable: number;
       }[];
 
@@ -895,62 +898,61 @@ export function registerAgency(app: FastifyInstance): void {
         .all(...r.params) as ShiftRec[];
 
       const chatters = db
-        .prepare('SELECT id, name, percent FROM agency_chatters WHERE agency_id = ? AND workspace_id IS ?')
-        .all(agency_id, ws) as { id: string; name: string; percent: number | null }[];
+        .prepare('SELECT id, name, percent, shift FROM agency_chatters WHERE agency_id = ? AND workspace_id IS ?')
+        .all(agency_id, ws) as { id: string; name: string; percent: number | null; shift: string | null }[];
       const cmap = new Map(chatters.map((c) => [c.id, c]));
       const models = db
         .prepare('SELECT id, name FROM agency_models WHERE agency_id = ? AND workspace_id IS ?')
         .all(agency_id, ws) as { id: string; name: string }[];
       const mmap = new Map(models.map((m) => [m.id, m.name]));
 
-      const key = (c: string | null, m: string | null, d: string, s: string | null): string =>
-        `${c ?? ''}|${m ?? ''}|${d}|${s ?? ''}`;
-      const recByKey = new Map<string, ShiftRec>();
-      for (const rec of recs) recByKey.set(key(rec.chatter_id, rec.model_id, rec.date, rec.shift), rec);
-
-      const cname = (id: string | null): string =>
-        id ? cmap.get(id)?.name ?? '—' : '— не определён —';
+      const cname = (id: string | null): string => (id ? cmap.get(id)?.name ?? '—' : '— не определён —');
       const mname = (id: string | null): string => (id ? mmap.get(id) ?? '—' : '—');
       const pct = (id: string | null): number => (id ? cmap.get(id)?.percent : null) ?? agency.default_percent;
 
-      const rows: AgencyShiftRow[] = [];
+      // Одна запись на (чаттер, модель, дата).
+      interface Entry {
+        chatter_id: string | null;
+        model_id: string | null;
+        date: string;
+        cnt: number;
+        net: number;
+        net_payable: number;
+        rec?: ShiftRec;
+      }
+      const ck = (c: string | null, m: string | null, d: string): string => `${c ?? ''}|${m ?? ''}|${d}`;
+      const entries = new Map<string, Entry>();
       for (const g of agg) {
-        const k = key(g.chatter_id, g.model_id, g.date, g.shift);
-        const rec = recByKey.get(k);
-        recByKey.delete(k);
-        rows.push({
-          id: rec?.id ?? null,
-          date: g.date,
-          shift: (g.shift as AgencyShift) ?? null,
-          chatter_id: g.chatter_id,
-          chatter_name: cname(g.chatter_id),
-          model_id: g.model_id,
-          model_name: mname(g.model_id),
-          count: g.cnt,
-          net: +g.net.toFixed(2),
-          payout: +((g.net_payable * pct(g.chatter_id)) / 100).toFixed(2),
-          is_fixed: rec?.is_fixed ?? 0,
-          note: rec?.note ?? null,
-          manual: 0
+        entries.set(ck(g.chatter_id, g.model_id, g.date), {
+          chatter_id: g.chatter_id, model_id: g.model_id, date: g.date,
+          cnt: g.cnt, net: g.net, net_payable: g.net_payable
         });
       }
-      for (const rec of recByKey.values()) {
-        rows.push({
-          id: rec.id,
-          date: rec.date,
-          shift: (rec.shift as AgencyShift) ?? null,
-          chatter_id: rec.chatter_id,
-          chatter_name: cname(rec.chatter_id),
-          model_id: rec.model_id,
-          model_name: mname(rec.model_id),
-          count: 0,
-          net: 0,
-          payout: 0,
-          is_fixed: rec.is_fixed,
-          note: rec.note,
-          manual: 1
-        });
+      for (const rec of recs) {
+        const k = ck(rec.chatter_id, rec.model_id, rec.date);
+        const e = entries.get(k);
+        if (e) { if (!e.rec) e.rec = rec; }
+        else entries.set(k, { chatter_id: rec.chatter_id, model_id: rec.model_id, date: rec.date, cnt: 0, net: 0, net_payable: 0, rec });
       }
+
+      const rows: AgencyShiftRow[] = [...entries.values()].map((e) => {
+        const shift = ((e.rec?.shift as AgencyShift) ?? (e.chatter_id ? (cmap.get(e.chatter_id)?.shift as AgencyShift) : null)) ?? null;
+        return {
+          id: e.rec?.id ?? null,
+          date: e.date,
+          shift,
+          chatter_id: e.chatter_id,
+          chatter_name: cname(e.chatter_id),
+          model_id: e.model_id,
+          model_name: mname(e.model_id),
+          count: e.cnt,
+          net: +e.net.toFixed(2),
+          payout: +((e.net_payable * pct(e.chatter_id)) / 100).toFixed(2),
+          is_fixed: e.rec?.is_fixed ?? 0,
+          note: e.rec?.note ?? null,
+          manual: e.cnt === 0 ? 1 : 0
+        };
+      });
       rows.sort(
         (x, y) =>
           y.date.localeCompare(x.date) ||

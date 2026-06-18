@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Plus, Trash2, Pin, MessageSquare } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Download, Plus, Trash2, Pin, MessageSquare } from 'lucide-react';
 import { SHIFT_LABELS } from '@swit/shared';
 import type { AgencyShiftRow, AgencyShift } from '@swit/shared';
 import { api } from '../../api';
@@ -65,6 +65,38 @@ export default function ShiftsPanel(): JSX.Element | null {
   const [rows, setRows] = useState<AgencyShiftRow[]>([]);
   const [draft, setDraft] = useState({ chatter_id: '', model_id: '', shift: '' as '' | AgencyShift, date: fmt(new Date()) });
   const [newModel, setNewModel] = useState('');
+  const [rateDrafts, setRateDrafts] = useState<Record<string, string>>({});
+  const [shiftOrder, setShiftOrder] = useState<AgencyShift[]>(() => {
+    try {
+      const raw = localStorage.getItem('swit.agency.shiftOrder');
+      if (raw) {
+        const arr = JSON.parse(raw) as AgencyShift[];
+        if (Array.isArray(arr) && arr.length === SHIFT_GRID.length) return arr;
+      }
+    } catch {
+      /* ignore */
+    }
+    return SHIFT_GRID.map((s) => s.key);
+  });
+
+  function moveShift(key: AgencyShift, dir: -1 | 1): void {
+    setShiftOrder((order) => {
+      const i = order.indexOf(key);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= order.length) return order;
+      const next = [...order];
+      [next[i], next[j]] = [next[j], next[i]];
+      try {
+        localStorage.setItem('swit.agency.shiftOrder', JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
+  const orderedShifts = shiftOrder
+    .map((k) => SHIFT_GRID.find((s) => s.key === k))
+    .filter((s): s is (typeof SHIFT_GRID)[number] => !!s);
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const from = fmt(weekStart);
@@ -179,14 +211,22 @@ export default function ShiftsPanel(): JSX.Element | null {
             </div>
 
             {/* Ряды смен */}
-            {SHIFT_GRID.map((sh) => (
-              <div key={sh.key} className="grid" style={{ gridTemplateColumns: '88px repeat(7, minmax(116px, 1fr))' }}>
-                <div className="border-b border-border px-2 py-2 bg-surface/50">
+            {orderedShifts.map((sh, si) => (
+              <div key={sh.key} className="grid group/row" style={{ gridTemplateColumns: '88px repeat(7, minmax(116px, 1fr))' }}>
+                <div className="border-b border-border px-2 py-2 bg-surface/50 relative">
                   <div className="flex items-center gap-1.5 text-xs font-medium text-ink">
                     <span className="w-2 h-2 rounded-full" style={{ background: sh.color }} />
                     {sh.label}
                   </div>
                   <div className="text-[10px] text-muted mt-0.5">{sh.time}</div>
+                  <div className="absolute right-1 top-1 flex flex-col opacity-0 group-hover/row:opacity-100 transition">
+                    <button onClick={() => moveShift(sh.key, -1)} disabled={si === 0} className="text-faint hover:text-ink disabled:opacity-20" title="Выше">
+                      <ChevronUp size={13} />
+                    </button>
+                    <button onClick={() => moveShift(sh.key, 1)} disabled={si === orderedShifts.length - 1} className="text-faint hover:text-ink disabled:opacity-20" title="Ниже">
+                      <ChevronDown size={13} />
+                    </button>
+                  </div>
                 </div>
                 {days.map((d) => {
                   const ds = fmt(d);
@@ -304,11 +344,11 @@ export default function ShiftsPanel(): JSX.Element | null {
                 <input
                   type="number"
                   step="0.01"
-                  defaultValue={m.rate ?? 0}
-                  key={m.id + (m.rate ?? 0)}
+                  value={rateDrafts[m.id] ?? String(m.rate ?? 0)}
+                  onChange={(e) => setRateDrafts((d) => ({ ...d, [m.id]: e.target.value }))}
                   onBlur={(e) => {
-                    const v = Number(e.target.value);
-                    if (Number.isFinite(v) && v !== (m.rate ?? 0)) void setRate(m.id, v);
+                    const val = Number(e.target.value);
+                    if (Number.isFinite(val) && val !== (m.rate ?? 0)) void setRate(m.id, val);
                   }}
                   className="w-16 h-7 px-1.5 rounded border border-border bg-surface text-xs text-right focus:outline-none focus:border-accent"
                 />
